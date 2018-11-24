@@ -291,11 +291,6 @@ public class MazeWithRooms : MonoBehaviour {
 					if (cells [nextPos + direction].type != CellS.TileType.Wall)
 					{
 						cells [nextPos + direction].type = CellS.TileType.Wall;
-						// Activate all walls in case it is needed in later corridor calculation.
-						cells[nextPos + direction].wallD = true;
-						cells[nextPos + direction].wallU = true;
-						cells[nextPos + direction].wallL = true;
-						cells[nextPos + direction].wallR = true;
 					}
 						
 					// Move along the passageway.
@@ -336,6 +331,18 @@ public class MazeWithRooms : MonoBehaviour {
 
 
 		}
+		// Set all tiles which are now walls tohave all walls active to avoid random gaps against walls and for later calculation.
+		// All activated at the end to avoid confusing loop adding calculations.
+		foreach (KeyValuePair<Vector2, CellS> c in cells)
+		{
+			if (c.Value.type == CellS.TileType.Wall)
+			{
+				c.Value.wallD = true;
+				c.Value.wallU = true;
+				c.Value.wallL = true;
+				c.Value.wallR = true;
+			}
+		}
 	}
 
 	public void RemoveLoops()
@@ -343,6 +350,11 @@ public class MazeWithRooms : MonoBehaviour {
 		// Refind our dead ends since the passages have been filled in.
 		deadEnds.Clear();
 		FindDeadEnds ();
+
+		for (int i = 0; i < deadEnds.Count; i++)
+		{
+			Debug.Log (string.Format ("Dead end: {0}, {1}", deadEnds [i].gridPos.x, deadEnds [i].gridPos.y));
+		}
 
 		for (int i = 0; i < deadEnds.Count; i++) 
 		{
