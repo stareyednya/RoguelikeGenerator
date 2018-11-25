@@ -1,6 +1,10 @@
-﻿using System.Collections;
+﻿#define ENABLE_PROFILER
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
+
+
 
 public class MazeWithRooms : MonoBehaviour {
 	// Hold and locate all the cells in the maze. 
@@ -18,7 +22,13 @@ public class MazeWithRooms : MonoBehaviour {
 	public int removalChance;
 
 	// Currently storing the time since the scene started in here to save processing time with a write to disk for a debug statement. 
-	public float timeSinceGeneration;
+	public float totalGenTime;
+	public float gridGenTime;
+	public float mazeGenTime;
+	public float sparseTime;
+	public float loopTime;
+	public float roomTime;
+	public float instantiationTime;
 
 	// Parameters for the number of rooms to include, and their range of possible dimensions. 
 	public int noOfRooms;
@@ -72,7 +82,8 @@ public class MazeWithRooms : MonoBehaviour {
 	{
 		GenerateMaze (mazeRows, mazeColumns);
 		InstantiateGrid ();
-		timeSinceGeneration =  Time.realtimeSinceStartup;
+		instantiationTime =  Time.realtimeSinceStartup - totalGenTime;
+		totalGenTime += instantiationTime;
 	}
 
 	private void GenerateMaze (int rows, int columns)
@@ -123,20 +134,33 @@ public class MazeWithRooms : MonoBehaviour {
 		int yStart = Random.Range (0, mazeRows);
 		currentCell = cells [new Vector2 (xStart, yStart)];
 
+		// Mark how long it took for the grid to be generated.
+		gridGenTime =  Time.realtimeSinceStartup;
+		totalGenTime = gridGenTime;
+
 		// Mark our starting cell as visited.
 		currentCell.visited = true;
 		unvisited = (mazeRows * mazeColumns) - 1;
 		// Perform recursive backtracking to create a maze. 
 		RecursiveBacktracking ();
 
+		mazeGenTime =  Time.realtimeSinceStartup - totalGenTime;
+		totalGenTime += mazeGenTime;
+
 		// Fill in the dead ends with some walls.
 		FindDeadEnds ();
 		FillInEnds();
+		sparseTime =  Time.realtimeSinceStartup - totalGenTime;
+		totalGenTime += sparseTime;
 
 		// Remove some dead ends by making the maze imperfect.
 		RemoveLoops ();
+		loopTime =  Time.realtimeSinceStartup - totalGenTime;
+		totalGenTime += loopTime;
 
 		PlaceRooms ();
+		roomTime =  Time.realtimeSinceStartup - totalGenTime;
+		totalGenTime += roomTime;
 
 	}
 
@@ -206,7 +230,8 @@ public class MazeWithRooms : MonoBehaviour {
 	/* MAZE GENERATION */
 	public void RecursiveBacktracking()
 	{
-		 
+		Profiler.BeginSample ("MazeGeneration");
+
 		// Loop while there are still cells in the grid we haven't visited. 
 		while (unvisited > 0)
 		{
@@ -233,6 +258,8 @@ public class MazeWithRooms : MonoBehaviour {
 				stack.Remove(currentCell);
 			}
 		}
+
+		Profiler.EndSample ();
 	}
 
 	public void FindDeadEnds()
@@ -350,11 +377,6 @@ public class MazeWithRooms : MonoBehaviour {
 		// Refind our dead ends since the passages have been filled in.
 		deadEnds.Clear();
 		FindDeadEnds ();
-
-		for (int i = 0; i < deadEnds.Count; i++)
-		{
-			Debug.Log (string.Format ("Dead end: {0}, {1}", deadEnds [i].gridPos.x, deadEnds [i].gridPos.y));
-		}
 
 		for (int i = 0; i < deadEnds.Count; i++) 
 		{
@@ -544,7 +566,6 @@ public class MazeWithRooms : MonoBehaviour {
 		// If neighbour is to the left of current. 
 		if (neighbourCell.gridPos.x < currentCell.gridPos.x)
 		{
-			//Debug.Log(string.Format("Removing left wall of cell {0}, {1}", currentCell.gridPos.x, currentCell.gridPos.y));
 			neighbourCell.wallR = false;
 			currentCell.wallL = false;
 		}
