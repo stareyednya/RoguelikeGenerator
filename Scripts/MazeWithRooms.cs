@@ -1,8 +1,6 @@
-﻿#define ENABLE_PROFILER
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Profiling;
 
 
 
@@ -36,6 +34,11 @@ public class MazeWithRooms : MonoBehaviour {
 	public int maxWidth;
 	public int minHeight;
 	public int maxHeight; 
+
+	public float roomTime1;
+	public float roomTime2;
+	public float roomTime3;
+	public float totalRoomTime;
 
 	// The prefab to use as the cell icon. 
 	[SerializeField]
@@ -230,8 +233,6 @@ public class MazeWithRooms : MonoBehaviour {
 	/* MAZE GENERATION */
 	public void RecursiveBacktracking()
 	{
-		Profiler.BeginSample ("MazeGeneration");
-
 		// Loop while there are still cells in the grid we haven't visited. 
 		while (unvisited > 0)
 		{
@@ -258,8 +259,6 @@ public class MazeWithRooms : MonoBehaviour {
 				stack.Remove(currentCell);
 			}
 		}
-
-		Profiler.EndSample ();
 	}
 
 	public void FindDeadEnds()
@@ -483,28 +482,28 @@ public class MazeWithRooms : MonoBehaviour {
 							// Check the current cell's neighbours. 
 							Vector2 currentPos = cCell;
 							bool isAdjacentC = false;
-
+							CellS current = cells [cCell];
 							for (int j = 0; j < possibleNeighbours.Length; j++) {
 								// Find the position of a neighbour on the grid, relative to the current cell. 
 								Vector2 nPos = currentPos + possibleNeighbours [j];
 								// Check the neighbouring cell exists and whether it's a corridor.
-								if (cells.ContainsKey (nPos) && cells[nPos].type == CellS.TileType.Corridor)
+								if (cells.ContainsKey (nPos) && current.type == CellS.TileType.Corridor)
 									isAdjacentC = true;
 
 								// For each cell overlapping a room, add 100 to score.
-								if (cells[cCell].type == CellS.TileType.Room)
+								if (current.type == CellS.TileType.Room)
 								{
 									currentScore += 100;
 								}
 
 								// For each cell next to a corridor, add 1.
-								if (cells[cCell].type == CellS.TileType.Wall && isAdjacentC)
+								if (current.type == CellS.TileType.Wall && isAdjacentC)
 								{
 									currentScore += 1;
 								}
 
 								// For each cell overlapping a corridor, add 3 to the score
-								if (cells[cCell].type == CellS.TileType.Corridor)
+								if (current.type == CellS.TileType.Corridor)
 								{
 									currentScore += 3;
 								}
@@ -513,6 +512,9 @@ public class MazeWithRooms : MonoBehaviour {
 						}
 					}
 				}
+
+				roomTime1 =  Time.realtimeSinceStartup - totalGenTime;
+				totalRoomTime += roomTime1;
 
 				// If this resulting score for the room is better than our current best, replace it. 
 				if (currentScore < bestScore && currentScore > 0) {
@@ -531,6 +533,8 @@ public class MazeWithRooms : MonoBehaviour {
 					cells [pos].type = CellS.TileType.Room;
 				}
 			}
+			roomTime2 =  Time.realtimeSinceStartup - totalGenTime;
+			totalRoomTime += roomTime2;
 			// For every cell adjacent to a room/corridor, add a doorway. 
 		}
 	}

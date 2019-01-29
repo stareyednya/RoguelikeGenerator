@@ -2,7 +2,14 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class MazeGenerator : MonoBehaviour {
+public class MazeGeneratorPooling : MonoBehaviour {
+
+	// POOLING CHANGE TESTS
+	// Hold and locate all the cells in the maze. 
+	private List<Cell> cellsP = new List<Cell>();
+	// Matching set of wall objects to instantiate.
+	private Dictionary<Vector2, Cell> wallsP = new Dictionary<Vector2, Cell>();
+	private Dictionary<Vector2, Cell> roomsP = new Dictionary<Vector2, Cell>();
 
 	// How many cells TALL the maze will be.
 	public int mazeRows;
@@ -28,6 +35,11 @@ public class MazeGenerator : MonoBehaviour {
 	public float loopTime;
 	public float roomTime;
 	public float instantiationTime;
+
+	public float roomTime1;
+	public float roomTime2;
+	public float roomTime3;
+	public float totalRoomTime;
 
 	// Parameters for the number of rooms to include, and their range of possible dimensions. 
 	public int noOfRooms;
@@ -75,6 +87,8 @@ public class MazeGenerator : MonoBehaviour {
 	// Organise the editor hierarchy. 
 	private GameObject mazeParent;
 	private GameObject wallParent;
+	// POOLING TESTER
+	private GameObject wallPParent;
 
 	// Checkboxes to select which generation to use.
 	public bool recursiveBacktrack;
@@ -112,9 +126,9 @@ public class MazeGenerator : MonoBehaviour {
 		mazeParent.name = "Maze";
 
 		// POOLING TESTER
-		wallParent = new GameObject ();
-		wallParent.transform.position = Vector2.zero; 
-		wallParent.name = "Walls";
+		wallPParent = new GameObject ();
+		wallPParent.transform.position = Vector2.zero; 
+		wallPParent.name = "Pooling Walls";
 
 		// Set the starting point of our maze somewhere in the middle. 
 		Vector2 startPos = new Vector2(-(cellSize * (mazeColumns / 2)) + (cellSize / 2), -(cellSize * (mazeRows / 2)) + (cellSize / 2));
@@ -141,31 +155,26 @@ public class MazeGenerator : MonoBehaviour {
 		int xStart = Random.Range(0, mazeColumns);
 		int yStart = Random.Range (0, mazeRows);
 		currentCell = cells [new Vector2 (xStart, yStart)];
-		gridGenTime =  Time.realtimeSinceStartup;
-		totalGenTime = gridGenTime;
 
 		// Mark our starting cell as visited by removing it from the unvisited list. 
 		unvisited.Remove(currentCell);
+
+		gridGenTime =  Time.realtimeSinceStartup;
+		totalGenTime = gridGenTime;
 			
 		if (recursiveBacktrack)
-			RecursiveBacktracking ();
-
+			RecursiveBacktracking ();	
 		mazeGenTime =  Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += mazeGenTime;
-
 		// Fill in the dead ends with some walls.
 		FindDeadEnds ();
 		FillInEnds();
-
 		sparseTime =  Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += sparseTime;
-
 		// Remove some dead ends by making the maze imperfect.
 		RemoveLoops ();
-
 		loopTime =  Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += loopTime;
-
 		//DoubleDungeon ();
 
 
@@ -307,6 +316,32 @@ public class MazeGenerator : MonoBehaviour {
 		// Add this cell to our lists. 
 		cells[keyPos] = newCell;
 		unvisited.Add (newCell);
+
+		// POOLING ADDITIONS
+
+		// Make a matching wall object and deactivate it. 
+		Cell newWall = new Cell();
+		newWall.gridPos = keyPos;
+		// Set and instantiate this cell's GameObject.
+		newWall.cellObject = Instantiate(wallPrefab, pos, wallPrefab.transform.rotation);
+		// Child the new cell to the maze parent. 
+		newWall.cellObject.transform.parent = wallPParent.transform;
+		// Set the name of this cellObject.
+		newWall.cellObject.name = "Wall - X:" + keyPos.x + " Y:" + keyPos.y;
+		// Get reference to attached cell script.
+		newWall.cScript = newWall.cellObject.GetComponent<CellScript>();
+		newWall.cellObject.SetActive (false);
+		wallsP [keyPos] = newWall;
+
+		// Make a matching room object and deactivate it. 
+		Cell newRoom = new Cell();
+		newRoom.gridPos = keyPos;
+		// Set and instantiate this cell's GameObject.
+		newRoom.cellObject = Instantiate(roomPrefab, pos, roomPrefab.transform.rotation);
+		// Get reference to attached cell script.
+		newRoom.cScript = newRoom.cellObject.GetComponent<CellScript>();
+		newRoom.cellObject.SetActive (false);
+		roomsP [keyPos] = newRoom;
 	}
 
 
@@ -331,6 +366,9 @@ public class MazeGenerator : MonoBehaviour {
 
 	public void FillInEnds()
 	{
+		// POOLING CHANGES
+		// Keep a list of positions of cells to deactivate and replace with walls at the end- MUST be done at the end as maze generation relies on previous cells being present
+		List<Vector2> posToReplace = new List<Vector2>();
 		wallParent = new GameObject ();
 		wallParent.transform.position = Vector2.zero; 
 		wallParent.name = "Walls";
@@ -364,14 +402,18 @@ public class MazeGenerator : MonoBehaviour {
 				}
 
 				// Fill in this dead end with a wall. 
-				currentEnd.cellObject.SetActive(false);
-				currentEnd.cellObject = Instantiate(wallPrefab, spawns[currentEnd.gridPos], wallPrefab.transform.rotation);
+				//currentEnd.cellObject.SetActive(false);
+				//currentEnd.cellObject = Instantiate(wallPrefab, spawns[currentEnd.gridPos], wallPrefab.transform.rotation);
 				// Child the new cell to the maze parent. 
-				cells[currentEnd.gridPos].cellObject.transform.parent = wallParent.transform;
+				//cells[currentEnd.gridPos].cellObject.transform.parent = wallParent.transform;
 				// Set the name of this cellObject.
-				cells[currentEnd.gridPos].cellObject.name = "Cell - X:" + cells[currentEnd.gridPos].gridPos.x + " Y:" + cells[currentEnd.gridPos].gridPos.y;
+				//cells[currentEnd.gridPos].cellObject.name = "Cell - X:" + cells[currentEnd.gridPos].gridPos.x + " Y:" + cells[currentEnd.gridPos].gridPos.y;
 
-				walls.Add (currentEnd);
+				//walls.Add (currentEnd);
+
+				// POOLING CHANGES
+				// Mark this cell as one to replace later 
+				posToReplace.Add(currentEnd.gridPos);
 
 				Vector2 nextPos = deadEnds[j].gridPos + direction; // The position of the next cell we're going to be moving to check. 
 
@@ -379,14 +421,16 @@ public class MazeGenerator : MonoBehaviour {
 				while (noOfWalls(cells[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
 				{
 					// Fill in the current cell if it hasn't been already.
-					if (!walls.Contains(cells[nextPos + direction]))
+					//if (!walls.Contains(cells[nextPos + direction]))
+					if (!posToReplace.Contains(nextPos + direction))
 					{
-						(cells[nextPos + direction]).cellObject = Instantiate(wallPrefab, spawns[currentEnd.gridPos], wallPrefab.transform.rotation);
+						//(cells[nextPos + direction]).cellObject = Instantiate(wallPrefab, spawns[currentEnd.gridPos], wallPrefab.transform.rotation);
 						// Child the new cell to the maze parent. 
-						cells[nextPos + direction].cellObject.transform.parent = wallParent.transform;
+						//cells[nextPos + direction].cellObject.transform.parent = wallParent.transform;
 						// Set the name of this cellObject.
-						cells[nextPos + direction].cellObject.name = "Cell - X:" + cells[nextPos + direction].gridPos.x + " Y:" + cells[nextPos + direction].gridPos.y;
-						walls.Add (cells[nextPos + direction]);
+						//cells[nextPos + direction].cellObject.name = "Cell - X:" + cells[nextPos + direction].gridPos.x + " Y:" + cells[nextPos + direction].gridPos.y;
+						//walls.Add (cells[nextPos + direction]);
+						posToReplace.Add(cells[nextPos + direction].gridPos);
 
 					}
 					// Move along the passageway.
@@ -424,7 +468,7 @@ public class MazeGenerator : MonoBehaviour {
 				}
 			}
 		}
-
+		/*
 		foreach (KeyValuePair<Vector2, Cell> c in cells)
 		{
 			if (walls.Contains(c.Value))
@@ -435,8 +479,21 @@ public class MazeGenerator : MonoBehaviour {
 				c.Value.cScript.wallD.SetActive(true);
 			}
 		}
+		*/
+		// POOLING CHANGES - go through list of positions to mark and activate all walls on that cell, then deactivate it, activate wall in that position
+		foreach (Vector2 p in posToReplace)
+		{
+			cells [p].cScript.wallD.SetActive (true);
+			cells [p].cScript.wallU.SetActive (true);
+			cells [p].cScript.wallL.SetActive (true);
+			cells [p].cScript.wallR.SetActive (true);
 
-
+			//int wallIndex = wallsP.IndexOf (cells [p]);
+			//Debug.Log (string.Format ("Index of cell {0},{1} is {2}", cells [p].gridPos.x, cells [p].gridPos.y, wallIndex));
+			//wallsP[wallIndex].cellObject.SetActive (true);
+			cells [p].cellObject.SetActive (false);
+			wallsP [p].cellObject.SetActive (true);
+		}
 	}
 
 	public Cell ProgressDeadEnd(Cell de)
@@ -550,12 +607,12 @@ public class MazeGenerator : MonoBehaviour {
 
 					// If this tile was listed as a wall, remove the wall object from it. 
 					// Repeat with chosen neighbour as the current 'dead end' tile. 
-
+					/*
 					if (walls.Contains(checkCell))
 					{
 						
 						checkCell.cellObject.SetActive(false);
-						checkCell.cellObject = Instantiate(cellPrefab, spawns[checkCell.gridPos], roomPrefab.transform.rotation);
+						//checkCell.cellObject = Instantiate(cellPrefab, spawns[checkCell.gridPos], roomPrefab.transform.rotation);
 						walls.Remove (checkCell);
 						// Remove walls between chosen neighbour and current dead end. 
 						CompareWalls(currentDeadEnd, checkCell);
@@ -570,8 +627,25 @@ public class MazeGenerator : MonoBehaviour {
 						CompareWalls(currentDeadEnd, checkCell);
 						hitCorridor = true;
 					}
+*/
+					// POOLING CHANGES - see if this spot has its wall tile active/
+					// If so, deactivate and compare the walls to remove it. 
+					if (wallsP[checkCell.gridPos].cellObject.activeInHierarchy)
+					{
+						wallsP [checkCell.gridPos].cellObject.SetActive (false);
+						cells [checkCell.gridPos].cellObject.SetActive (true);
+						// Remove walls between chosen neighbour and current dead end. 
+						CompareWalls(currentDeadEnd, checkCell);
 
 
+						currentDeadEnd = checkCell;
+					}
+					else
+					{
+						// Remove walls between chosen neighbour and current dead end. 
+						CompareWalls(currentDeadEnd, checkCell);
+						hitCorridor = true;
+					}
 				}
 			}
 		}
@@ -694,23 +768,27 @@ public class MazeGenerator : MonoBehaviour {
 								Vector2 nPos = currentPos + possibleNeighbours [j];
 								// Check the neighbouring cell exists. 
 								// POOLING CHANGES
-								if (cells.ContainsKey (nPos) && !walls.Contains(cells[nPos]))
+								//if (cells.ContainsKey (nPos) && !walls.Contains(cells[nPos]))
+								if (cells.ContainsKey (nPos) && cells[nPos].cellObject.activeInHierarchy)
 									isAdjacentC = true;
 							}
 							// For each cell overlapping a room, add 100 to score.
-							if (rooms.Contains (cells [cCell])) 
+							//if (rooms.Contains (cells [cCell])) {
+							if (roomsP[cCell].cellObject.activeInHierarchy)
 							{
 								//Debug.Log (string.Format ("Adding 100 to score."));
 								currentScore += 100;
 							}
-							if (walls.Contains (cells [cCell]) && isAdjacentC) 
+							//if (walls.Contains (cells [cCell]) && isAdjacentC) {
+							if (wallsP[cCell].cellObject.activeInHierarchy && isAdjacentC)
 							{
 								//Debug.Log (string.Format ("Adding 1 to score."));
 								currentScore += 1;
 							}
 
 							// For each cell overlapping a corridor, add 3 to the score
-							if (!walls.Contains (cells [cCell])) 
+							//if (!walls.Contains (cells [cCell])) {
+							if (!wallsP[cCell].cellObject.activeInHierarchy)
 							{
 								//Debug.Log (string.Format ("Adding 3 to score."));
 								currentScore += 3;
@@ -720,6 +798,9 @@ public class MazeGenerator : MonoBehaviour {
 
 					}
 				}
+
+				roomTime1 =  Time.realtimeSinceStartup - totalGenTime;
+				totalRoomTime += roomTime1;
 
 				//Debug.Log (string.Format ("Current score is {0} for bottom left {1}, {2} for room {3}", currentScore, bottomLeft.x, bottomLeft.y, i+1));
 				// If this resulting score for the room is better than our current best, replace it. 
@@ -736,7 +817,7 @@ public class MazeGenerator : MonoBehaviour {
 			{
 				for (int y = (int)bestPos.y; y < (int)bestPos.y + roomHeight; y++)
 				{
-					
+					/*
 					Cell cCell = cells [new Vector2 (x, y)];
 					// Instantiate a room tile here. 
 					cCell.cellObject.SetActive(false);
@@ -749,11 +830,30 @@ public class MazeGenerator : MonoBehaviour {
 
 					// Mark this cell as being in a room now. 
 					rooms.Add(cCell);
+					*/
 
+					// POOLING CHANGES
+					Vector2 pos = new Vector2(x, y);
+					if (cells[pos].cellObject.activeInHierarchy)
+					{
+						cells[pos].cellObject.SetActive(false);
+						// Remove all walls
+						cells[pos].cScript.wallD.SetActive(false);
+						cells[pos].cScript.wallL.SetActive(false);
+						cells[pos].cScript.wallR.SetActive(false);
+						cells[pos].cScript.wallU.SetActive(false);
+					}
+					else
+					{
+						wallsP [pos].cellObject.SetActive (false);
+					}
 
-
+					roomsP [pos].cellObject.SetActive (true);
 				}
 			}
+
+			roomTime2 =  Time.realtimeSinceStartup - totalGenTime;
+			totalRoomTime += roomTime2;
 
 			// For every cell adjacent to a room/corridor, add a doorway. 
 		}
