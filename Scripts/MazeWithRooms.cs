@@ -1,4 +1,6 @@
-﻿using System.Collections;
+﻿// CELL STRUCTURE METHOD
+
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -27,6 +29,7 @@ public class MazeWithRooms : MonoBehaviour {
 	public float loopTime;
 	public float roomTime;
 	public float instantiationTime;
+    public float lockTime;
 
 	// Parameters for the number of rooms to include, and their range of possible dimensions. 
 	public int noOfRooms;
@@ -34,11 +37,6 @@ public class MazeWithRooms : MonoBehaviour {
 	public int maxWidth;
 	public int minHeight;
 	public int maxHeight; 
-
-	public float roomTime1;
-	public float roomTime2;
-	public float roomTime3;
-	public float totalRoomTime;
 
 	// The prefab to use as the cell icon. 
 	[SerializeField]
@@ -49,9 +47,18 @@ public class MazeWithRooms : MonoBehaviour {
 	// A tile to differentiate room tiles from the floor.
 	[SerializeField]
 	private GameObject roomPrefab;
+    // Lock icon- currently using drink from the tutorial because i dont want to make one right now
+    [SerializeField]
+    private GameObject lockPrefab;
+    // Key icon - currently using food from the tutorial because I don't want to make one right now 
+    [SerializeField]
+    private GameObject keyPrefab;
+    // Player - currently does nothing, only used as a starting point to try pathfinding to the key with
+    [SerializeField]
+    private GameObject spawnPrefab;
 
-	// List to store cells being checked during generation for Recursive Backtracking: the 'stack'.
-	private List<CellS> stack = new List<CellS>();
+    // List to store cells being checked during generation for Recursive Backtracking: the 'stack'.
+    private List<CellS> stack = new List<CellS>();
 	// Counter of how many cells we still have to visit. Initialised to the number of cells in the grid - 1 (for the start cell).
 	private int unvisited;
 	// Holds the current cell and the next cell being checked.
@@ -79,14 +86,40 @@ public class MazeWithRooms : MonoBehaviour {
 
 	// Tester to see what rooms is finding
 	private GameObject roomParent;
+	// List for cells that're found to be next to a corridor in a room. 
+	private List<CellS> adjCells = new List<CellS> ();
 
-	// Use this for initialization
-	void Start () 
+    // Keep a unique reference to the specific tile the player spawns at- will be used for A*.
+    private CellS playerSpawn;
+    // Same for the key placement, but as a position since it's not an instantiated cell.
+    private CellS keySpawn;
+
+
+    // Use this for initialization
+    void Start () 
 	{
 		GenerateMaze (mazeRows, mazeColumns);
+		PlacePlayerSpawn (); // must be here as it works on tile types only
+
 		InstantiateGrid ();
 		instantiationTime =  Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += instantiationTime;
+
+
+		PlaceLocks ();
+		//keySpawn.h = (int)manhattanDistance (keySpawn);
+		//Debug.Log (string.Format ("Manhattan distance: {0}", keySpawn.h));
+		PathToSpawn ();
+        
+        lockTime = Time.realtimeSinceStartup - totalGenTime;
+        totalGenTime += lockTime;
+
+        List<CellS> bestPath = BuildPath (playerSpawn);
+		foreach(CellS c in bestPath)
+		{
+			Debug.Log (string.Format ("{0}, {1}", c.gridPos.x, c.gridPos.y));
+		}
+        
 	}
 
 	private void GenerateMaze (int rows, int columns)
@@ -225,8 +258,21 @@ public class MazeWithRooms : MonoBehaviour {
 				currentCell.cellObject.transform.parent = roomParent.transform;
 				// Set the name of this cellObject.
 				currentCell.cellObject.name = "Room - X:" + currentCell.gridPos.x + " Y:" + currentCell.gridPos.y;
-				break;
-			}
+                // Set up walls according to the cell's marked walls. Deactivating as default instantiation value is all active.
+                currentCell.cScript = currentCell.cellObject.GetComponent<CellScript> ();
+                if (!currentCell.wallD)
+                    currentCell.cScript.wallD.SetActive(false);
+                if (!currentCell.wallU)
+                    currentCell.cScript.wallU.SetActive(false);
+                if (!currentCell.wallL)
+                    currentCell.cScript.wallL.SetActive(false);
+                if (!currentCell.wallR)
+                    currentCell.cScript.wallR.SetActive(false);
+                break;
+            case CellS.TileType.Spawn:
+                currentCell.cellObject = Instantiate(spawnPrefab, currentCell.spawnPos, spawnPrefab.transform.rotation);
+                break;
+            }
 		}
 	}
 
@@ -271,7 +317,7 @@ public class MazeWithRooms : MonoBehaviour {
 				if (cells.ContainsKey(pos))
 				{
 					CellS testCell = cells [pos];
-					if (noOfWalls (testCell) >= 3 && testCell.type != CellS.TileType.Wall)
+					if (NoOfWalls (testCell) >= 3 && testCell.type != CellS.TileType.Wall)
 					{
 						deadEnds.Add (testCell);
 					}
@@ -311,7 +357,7 @@ public class MazeWithRooms : MonoBehaviour {
 				Vector2 nextPos = deadEnds[j].gridPos + direction; 
 
 				// Follow along ths passageway until we are no longer filling in dead ends in this direction i.e current cell does not have 3 walls.
-				while (noOfWalls(cells[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
+				while (NoOfWalls(cells[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
 				{
 					// Mark the current cell as a wall if it hasn't been done already. 
 					if (cells [nextPos + direction].type != CellS.TileType.Wall)
@@ -344,7 +390,7 @@ public class MazeWithRooms : MonoBehaviour {
 
 				// If our current cell now has 3 walls, it's a dead end, so update our dead end list.
 				// else we're done with this dead end, so remove it.
-				if (noOfWalls(cells [nextPos]) == 3)
+				if (NoOfWalls(cells [nextPos]) == 3)
 				{
 					deadEnds [j] = cells [nextPos];
 				}
@@ -469,7 +515,7 @@ public class MazeWithRooms : MonoBehaviour {
 
 				// Set our current score to 0.
 				int currentScore = 0;
-
+				//Debug.Log (string.Format ("Testing bottom left {0},{1}", bottomLeft.x, bottomLeft.y));
 				// Only check room position if this position wouldn't take the room completely off the grid. 
 				Vector2 cCell = new Vector2(0,0);
 				if (upperLeft.y < mazeRows && upperRight.x < mazeColumns)
@@ -487,12 +533,16 @@ public class MazeWithRooms : MonoBehaviour {
 								// Find the position of a neighbour on the grid, relative to the current cell. 
 								Vector2 nPos = currentPos + possibleNeighbours [j];
 								// Check the neighbouring cell exists and whether it's a corridor.
-								if (cells.ContainsKey (nPos) && current.type == CellS.TileType.Corridor)
-									isAdjacentC = true;
-
-								// For each cell overlapping a room, add 100 to score.
-								if (current.type == CellS.TileType.Room)
+								if (cells.ContainsKey (nPos) && cells[nPos].type == CellS.TileType.Corridor)
 								{
+									isAdjacentC = true;
+									current.isAdjacentC = true;
+								}
+
+
+                                // For each cell overlapping a room, add 100 to score.
+                                if (current.type == CellS.TileType.Room)
+                                {
 									currentScore += 100;
 								}
 
@@ -503,7 +553,7 @@ public class MazeWithRooms : MonoBehaviour {
 								}
 
 								// For each cell overlapping a corridor, add 3 to the score
-								if (current.type == CellS.TileType.Corridor)
+							    if (current.type == CellS.TileType.Corridor)
 								{
 									currentScore += 3;
 								}
@@ -513,13 +563,13 @@ public class MazeWithRooms : MonoBehaviour {
 					}
 				}
 
-				roomTime1 =  Time.realtimeSinceStartup - totalGenTime;
-				totalRoomTime += roomTime1;
 
 				// If this resulting score for the room is better than our current best, replace it. 
 				if (currentScore < bestScore && currentScore > 0) {
 					bestScore = currentScore;
 					bestPos = bottomLeft;
+					//Debug.Log (string.Format ("New best score"));
+
 				}
 
 			}
@@ -530,12 +580,74 @@ public class MazeWithRooms : MonoBehaviour {
 				for (int y = (int)bestPos.y; y < (int)bestPos.y + roomHeight; y++) 
 				{
 					Vector2 pos = new Vector2(x, y);
-					cells [pos].type = CellS.TileType.Room;
-				}
-			}
-			roomTime2 =  Time.realtimeSinceStartup - totalGenTime;
-			totalRoomTime += roomTime2;
-			// For every cell adjacent to a room/corridor, add a doorway. 
+					CellS c = cells [pos];
+					//cells [pos].type = CellS.TileType.Room;
+					c.type = CellS.TileType.Room;
+					c.roomNo = i + 1;
+					if (c.isAdjacentC)
+						adjCells.Add (c);
+
+                    // Determine which walls on this room cell need to be active to block it off. 
+                    // Deactivate all wall first. 
+                    // Only need to do special wall check for left and below cells due to the room cells being instantiated upwards column by column.
+                    c.wallL = false;
+                    c.wallR = false;
+                    c.wallU = false;
+                    c.wallD = false;
+                    Vector2 nPos = pos;
+                    // Left neighbour
+                    nPos = pos + possibleNeighbours[0];
+                    if (cells.ContainsKey(nPos))
+                    {
+                        CellS n = cells[nPos];
+                        if (n.type == CellS.TileType.Wall || (n.type == CellS.TileType.Room && c.roomNo != n.roomNo))
+                        {
+                            c.wallL = true;
+                        }
+                        if(n.type == CellS.TileType.Room && c.roomNo == n.roomNo)
+                        {
+                            n.wallR = false;
+                        }
+                    }
+
+                    // Right neighbour 
+                    nPos = pos + possibleNeighbours[1];
+                    if (cells.ContainsKey(nPos))
+                    {
+                        CellS n = cells[nPos];
+                        if (n.type == CellS.TileType.Wall || (n.type == CellS.TileType.Room && c.roomNo != n.roomNo))
+                        {
+                            c.wallR = true;
+                        }
+                    }
+
+                    // Above neighbour
+                    nPos = pos + possibleNeighbours[2];
+                    if (cells.ContainsKey(nPos))
+                    {
+                        CellS n = cells[nPos];
+                        if (n.type == CellS.TileType.Wall || (n.type == CellS.TileType.Room && c.roomNo != n.roomNo))
+                        {
+                            c.wallU = true;
+                        }
+                    }
+
+                    // Below neighbour
+                    nPos = pos + possibleNeighbours[3];
+                    if (cells.ContainsKey(nPos))
+                    {
+                        CellS n = cells[nPos];
+                        if (n.type == CellS.TileType.Wall || (n.type == CellS.TileType.Room && c.roomNo != n.roomNo))
+                        {
+                            c.wallD = true;
+                        }
+                        if (n.type == CellS.TileType.Room && c.roomNo == n.roomNo)
+                        {
+                            n.wallU = false;
+                        }
+                    }
+                }
+			} 
 		}
 	}
 
@@ -593,7 +705,7 @@ public class MazeWithRooms : MonoBehaviour {
 		}
 	}
 
-	public int noOfWalls(CellS c)
+	public int NoOfWalls(CellS c)
 	{
 		int count = 0;
 		if (c.wallD)
@@ -608,5 +720,253 @@ public class MazeWithRooms : MonoBehaviour {
 
 		return count;
 	}
+
+    /* LOCKS AND KEYS */
+    /* PATHFINDING */
+    public CellS FindLowestFScore(List<CellS> openList)
+    {
+        int lowestF = int.MaxValue;
+        CellS lowestCell = null;
+        foreach (CellS c in openList)
+        {
+            if (c.f < lowestF)
+            {
+                lowestF = c.f;
+                lowestCell = c;
+            }
+        }
+        return lowestCell;
+    }
+
+    public bool AreConnected(CellS currentCell, CellS neighbourCell)
+    {
+        //Debug.Log (string.Format ("Current cell: {0},{1}  Neighbour: {2}, {3}", currentCell.gridPos.x, currentCell.gridPos.y, neighbourCell.gridPos.x, neighbourCell.gridPos.y));
+        bool connected = true;
+        // If neighbour is to the left of current. 
+        if (neighbourCell.gridPos.x < currentCell.gridPos.x)
+        {
+            if (currentCell.wallL && neighbourCell.wallR)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Left neighbour is not connected"));
+            }
+
+        }
+        // If neighbour is to the right of current. 
+        else if (neighbourCell.gridPos.x > currentCell.gridPos.x)
+        {
+            if (currentCell.wallR && neighbourCell.wallL)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Right neighbour is not connected"));
+            }
+        }
+        // If neighbour is above current. 
+        else if (neighbourCell.gridPos.y > currentCell.gridPos.y)
+        {
+            if (currentCell.wallU && neighbourCell.wallD)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Up neighbour is not connected"));
+            }
+        }
+        // If neighbour is below current. 
+        else if (neighbourCell.gridPos.y < currentCell.gridPos.y)
+        {
+            if (currentCell.wallD && neighbourCell.wallU)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Down neighbour is not connected"));
+            }
+        }
+        return connected;
+    }
+
+    public List<CellS> GetNeighbours(CellS cCell)
+    {
+        List<CellS> neighbours = new List<CellS>();
+        CellS nCell = cCell;
+        // Store the position of our current cell. 
+        Vector2 currentPos = cCell.gridPos;
+
+        foreach (Vector2 p in possibleNeighbours)
+        {
+            // Find the position of a neighbour on the grid, relative to the current cell. 
+            Vector2 nPos = currentPos + p;
+            // Check the neighbouring cell exists. 
+            if (cells.ContainsKey(nPos))
+                nCell = cells[nPos];
+
+            // Check if the neighbouring cell is traversable and therefore a valid neighbour.
+            // Also check if the wall in that direction is active to prevent the case of jumping to a blocked off corridor. 
+            // (might be fixable when the dungeon is spaced out, but for now)
+            if (nCell.type != CellS.TileType.Wall)
+            {
+                if ((nCell.type == CellS.TileType.Corridor && cCell.type == CellS.TileType.Corridor)
+                    || (nCell.type == CellS.TileType.Room && cCell.type == CellS.TileType.Room))
+                {
+                    if (AreConnected(cCell, nCell))
+                        neighbours.Add(nCell);
+                }
+                else
+                {
+                    neighbours.Add(nCell);
+                }
+            }
+
+        }
+
+        // Return the completed list of traversable neighbours.
+        return neighbours;
+    }
+
+    public float ManhattanDistance(CellS c)
+    {
+        // Manhattan distance is the sum of the absolute values of the horizontal and the vertical distance
+        float h = Mathf.Abs(c.gridPos.x - playerSpawn.gridPos.x) + Mathf.Abs(c.gridPos.y - playerSpawn.gridPos.y);
+        return h;
+    }
+
+
+    public void PathToSpawn()
+    {
+        // Target position is the player's spawn - stored in playerSpawn already as a CellS 
+        List<CellS> openList = new List<CellS>();
+        List<CellS> closedList = new List<CellS>();
+        // Add the starting position to the open list - the location of the key.
+        CellS startCell = keySpawn;
+        openList.Add(startCell);
+        CellS currentCell = null;
+
+        while (openList.Count > 0)
+        {
+            currentCell = FindLowestFScore(openList);
+            // Add the current cell to the closed list and remove it from the open list
+            closedList.Add(currentCell);
+            openList.Remove(currentCell);
+
+            // Has the target been found? 
+            if (closedList.Contains(playerSpawn))
+            {
+                break;
+            }
+
+            List<CellS> adjacentCells = GetNeighbours(currentCell);
+            foreach (CellS c in adjacentCells)
+            {
+                // If this cell is already in the closed path, skip it because we know about it 
+                if (closedList.Contains(c))
+                    continue;
+
+                // If this cell isn't in the open list, add it in for evaluation
+                if (!openList.Contains(c))
+                {
+                    // Compute its g and h scores, set the parent
+                    c.g = currentCell.g + 1;
+                    c.h = (int)ManhattanDistance(c);
+                    c.parent = currentCell;
+                    openList.Add(c);
+                }
+                else if (c.h + currentCell.g + 1 < c.f)
+                {
+                    // If using the current g score make the f score lower, update the parent as its a better path.
+                    c.parent = currentCell;
+                }
+
+            }
+
+        }
+
+    }
+
+    // Tester to see if the pathfinding is currently working. 
+    private List<CellS> BuildPath(CellS c)
+    {
+        List<CellS> bestPath = new List<CellS>();
+        CellS currentCell = c;
+        bestPath.Insert(0, currentCell);
+        while (currentCell.parent != null)
+        {
+            currentCell = currentCell.parent;
+            if (currentCell.parent != null)
+            {
+                bestPath.Insert(0, currentCell);
+            }
+        }
+        return bestPath;
+    }
+
+
+
+
+    public void PlacePlayerSpawn()
+    {
+        // Choose a random point in a corridor and change that cell's type to the player's spawn. 
+        bool validSpawn = false;
+        CellS spawnTile = null;
+        while (!validSpawn)
+        {
+            Vector2 pos = new Vector2(Random.Range(0, mazeRows), Random.Range(0, mazeColumns));
+            spawnTile = cells[pos];
+            if (spawnTile.type == CellS.TileType.Corridor)
+            {
+                validSpawn = true;
+            }
+        }
+
+        spawnTile.type = CellS.TileType.Spawn;
+
+        playerSpawn = spawnTile;
+    }
+
+
+    public void PlaceLocks()
+    {
+        // Choose a random tile that connects a room to a corridor and place the lock there. 
+        CellS lockTile = adjCells[Random.Range(0, adjCells.Count)];
+        Instantiate(lockPrefab, lockTile.spawnPos, Quaternion.identity);
+
+
+        // Instantiate the key in any valid corridor or room tile
+        /*
+		bool validKey = false;
+		CellS keyTile = null;
+		while (!validKey)
+		{
+			Vector2 pos = new Vector2 (Random.Range (0, mazeRows), Random.Range (0, mazeColumns));
+			keyTile = cells[pos];
+			if (keyTile.type != CellS.TileType.Wall)
+			{
+				validKey = true;
+			}
+		}
+
+		Instantiate (keyPrefab, keyTile.spawnPos, Quaternion.identity);
+		*/
+        // Put they key specifically in a room. 
+        /*
+		int noOfRoomTiles = roomParent.transform.childCount;
+		GameObject keyTile = roomParent.transform.GetChild(Random.Range(0, noOfRoomTiles)).gameObject;
+		Instantiate (keyPrefab, keyTile.transform.position, Quaternion.identity);
+		keySpawn = keyTile.transform.position;
+		Debug.Log (string.Format ("Key spawn: {0},{1}", keySpawn.x, keySpawn.y));
+		*/
+
+        bool validSpawn = false;
+        CellS spawnTile = null;
+        while (!validSpawn)
+        {
+            Vector2 pos = new Vector2(Random.Range(0, mazeRows), Random.Range(0, mazeColumns));
+            spawnTile = cells[pos];
+            if (spawnTile.type == CellS.TileType.Room)
+            {
+                validSpawn = true;
+            }
+        }
+
+        Instantiate(keyPrefab, spawnTile.spawnPos, Quaternion.identity);
+
+        keySpawn = spawnTile;
+    }
 
 }

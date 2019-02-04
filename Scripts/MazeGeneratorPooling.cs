@@ -104,7 +104,7 @@ public class MazeGeneratorPooling : MonoBehaviour {
 	{
 		GenerateMaze (mazeRows, mazeColumns);
 		//Debug.Log (string.Format ("Time since scene generation: {0}", Time.realtimeSinceStartup)); //probably needs changing from a debug statement as write to disk not obvious and time consuming in itself
-		instantiationTime =  Time.realtimeSinceStartup - totalGenTime;
+		instantiationTime = Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += instantiationTime;
 	}
 
@@ -742,6 +742,7 @@ public class MazeGeneratorPooling : MonoBehaviour {
 				//Debug.Log (string.Format ("Upper left: {0}, {1}  Upper right: {2}, {3}   Bottom left: {4}, {5}   Bottom right: {6}, {7}", upperLeft.x, upperLeft.y, upperRight.x, upperRight.y, bottomLeft.x, bottomLeft.y, bottomRight.x, bottomRight.y));
 				// Set our current score to 0.
 				int currentScore = 0;
+				//Debug.Log (string.Format ("Testing bottom left {0},{1}", bottomLeft.x, bottomLeft.y));
 
 				// Only check room position if this position wouldn't take the room completely off the grid. 
 				Vector2 cCell = new Vector2(0,0);
@@ -777,12 +778,14 @@ public class MazeGeneratorPooling : MonoBehaviour {
 							if (roomsP[cCell].cellObject.activeInHierarchy)
 							{
 								//Debug.Log (string.Format ("Adding 100 to score."));
+
 								currentScore += 100;
 							}
 							//if (walls.Contains (cells [cCell]) && isAdjacentC) {
 							if (wallsP[cCell].cellObject.activeInHierarchy && isAdjacentC)
 							{
 								//Debug.Log (string.Format ("Adding 1 to score."));
+
 								currentScore += 1;
 							}
 
@@ -791,6 +794,7 @@ public class MazeGeneratorPooling : MonoBehaviour {
 							if (!wallsP[cCell].cellObject.activeInHierarchy)
 							{
 								//Debug.Log (string.Format ("Adding 3 to score."));
+
 								currentScore += 3;
 							}
 
@@ -805,13 +809,11 @@ public class MazeGeneratorPooling : MonoBehaviour {
 				//Debug.Log (string.Format ("Current score is {0} for bottom left {1}, {2} for room {3}", currentScore, bottomLeft.x, bottomLeft.y, i+1));
 				// If this resulting score for the room is better than our current best, replace it. 
 				if (currentScore < bestScore && currentScore > 0) {
-					//Debug.Log (string.Format ("Updating best score"));
 					bestScore = currentScore;
 					bestPos = bottomLeft;
 				}
 
 			}
-			//Debug.Log (string.Format ("Placing room {0} at pos {1}, {2} with best score {3}", i + 1, bestPos.x, bestPos.y, bestScore));
 			// Place the room in the upper left position where the best score was. 
 			for (int x = (int)bestPos.x; x < (int)bestPos.x + roomWidth; x++)
 			{
