@@ -8,15 +8,23 @@ using UnityEngine;
 
 public class MazeWithRooms : MonoBehaviour {
 	// Hold and locate all the cells in the maze. 
-	private Dictionary<Vector2, CellS> cells = new Dictionary<Vector2, CellS>();
+	private Dictionary<Vector2, CellS> mazeCells = new Dictionary<Vector2, CellS>();
+    // Hold and locate all the cells in the dungeon (after doubling)
+    private Dictionary<Vector2, CellS> dungeonCells = new Dictionary<Vector2, CellS>();
+    // The final dictonary that will be used to instantiate the grid with. Will be set to one of the above depending on if the dungeon is spaced or not.
+    private Dictionary<Vector2, CellS> cells = new Dictionary<Vector2, CellS>();
 
-	// How many cells TALL the maze will be.
-	public int mazeRows;
+    // How many cells TALL the maze will be.
+    public int mazeRows;
 	// how many cells WIDE the maze will be. 
 	public int mazeColumns;
 
-	// How much rock to fill back in. 
-	public int sparseness;
+    // How large the finished dungeon will be if doubled. Calculated from mazeRows and mazeColumns when solution is doubled to space it out.
+    private int dungeonRows;
+    private int dungeonColumns;
+
+    // How much rock to fill back in. 
+    public int sparseness;
 
 	// The chance of a dead end being filled back in. 
 	public int removalChance;
@@ -57,6 +65,9 @@ public class MazeWithRooms : MonoBehaviour {
     [SerializeField]
     private GameObject spawnPrefab;
 
+    [SerializeField]
+    private GameObject spacerPrefab;
+
     // List to store cells being checked during generation for Recursive Backtracking: the 'stack'.
     private List<CellS> stack = new List<CellS>();
 	// Counter of how many cells we still have to visit. Initialised to the number of cells in the grid - 1 (for the start cell).
@@ -80,6 +91,7 @@ public class MazeWithRooms : MonoBehaviour {
 
 	// Checkboxes to select which generation to use.
 	public bool recursiveBacktrack;
+    public bool doubleDungeon;
 
 	// List of all cells found to be dead ends, i.e, 3 walls are active. 
 	private List<CellS> deadEnds = new List<CellS> ();
@@ -106,21 +118,21 @@ public class MazeWithRooms : MonoBehaviour {
 		totalGenTime += instantiationTime;
 
 
-		PlaceLocks ();
-		//keySpawn.h = (int)manhattanDistance (keySpawn);
-		//Debug.Log (string.Format ("Manhattan distance: {0}", keySpawn.h));
-		PathToSpawn ();
-        
+        PlaceLocks();
+        keySpawn.h = (int)ManhattanDistance (keySpawn);
+        //Debug.Log (string.Format ("Manhattan distance: {0}", keySpawn.h));
+        PathToSpawn();
+
         lockTime = Time.realtimeSinceStartup - totalGenTime;
         totalGenTime += lockTime;
 
-        List<CellS> bestPath = BuildPath (playerSpawn);
-		foreach(CellS c in bestPath)
-		{
-			Debug.Log (string.Format ("{0}, {1}", c.gridPos.x, c.gridPos.y));
-		}
-        
-	}
+        //List<CellS> bestPath = BuildPath(playerSpawn);
+        //foreach (CellS c in bestPath)
+        //{
+        //    Debug.Log(string.Format("{0}, {1}", c.gridPos.x, c.gridPos.y));
+        //}
+
+    }
 
 	private void GenerateMaze (int rows, int columns)
 	{
@@ -168,7 +180,7 @@ public class MazeWithRooms : MonoBehaviour {
 		// Choose a random cell to start from 
 		int xStart = Random.Range(0, mazeColumns);
 		int yStart = Random.Range (0, mazeRows);
-		currentCell = cells [new Vector2 (xStart, yStart)];
+		currentCell = mazeCells [new Vector2 (xStart, yStart)];
 
 		// Mark how long it took for the grid to be generated.
 		gridGenTime =  Time.realtimeSinceStartup;
@@ -193,8 +205,20 @@ public class MazeWithRooms : MonoBehaviour {
 		RemoveLoops ();
 		loopTime =  Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += loopTime;
+        if (doubleDungeon)
+        {
+            DoubleDungeon();
+            cells = dungeonCells;
+            mazeRows = dungeonRows - 1;
+            mazeColumns = dungeonColumns - 1;
+        }
+        else
+        {
+            cells = mazeCells;
+        }
+        
 
-		PlaceRooms ();
+        PlaceRooms ();
 		roomTime =  Time.realtimeSinceStartup - totalGenTime;
 		totalGenTime += roomTime;
 
@@ -207,16 +231,8 @@ public class MazeWithRooms : MonoBehaviour {
 		// Store a reference to this position in the grid.
 		newCell.gridPos = keyPos;
 		newCell.spawnPos = pos;
-		// Set the defaults of this cell. 
-		newCell.wallD = true;
-		newCell.wallU = true;
-		newCell.wallL = true;
-		newCell.wallR = true;
-		newCell.visited = false;
-		newCell.type = CellS.TileType.Corridor;
-
 		// Store this created cell.
-		cells[keyPos] = newCell;
+		mazeCells[keyPos] = newCell;
 	}
 
 	// Instantiate our finished grid. 
@@ -272,8 +288,12 @@ public class MazeWithRooms : MonoBehaviour {
             case CellS.TileType.Spawn:
                 currentCell.cellObject = Instantiate(spawnPrefab, currentCell.spawnPos, spawnPrefab.transform.rotation);
                 break;
+            case CellS.TileType.Spacer:
+                    currentCell.cellObject = Instantiate(spacerPrefab, currentCell.spawnPos, spacerPrefab.transform.rotation);
+                    break;
             }
 		}
+        
 	}
 
 	/* MAZE GENERATION */
@@ -314,9 +334,9 @@ public class MazeWithRooms : MonoBehaviour {
 			for (int y = 0; y < mazeRows; y++)
 			{
 				Vector2 pos = new Vector2 (x, y);
-				if (cells.ContainsKey(pos))
+				if (mazeCells.ContainsKey(pos))
 				{
-					CellS testCell = cells [pos];
+					CellS testCell = mazeCells [pos];
 					if (NoOfWalls (testCell) >= 3 && testCell.type != CellS.TileType.Wall)
 					{
 						deadEnds.Add (testCell);
@@ -357,12 +377,12 @@ public class MazeWithRooms : MonoBehaviour {
 				Vector2 nextPos = deadEnds[j].gridPos + direction; 
 
 				// Follow along ths passageway until we are no longer filling in dead ends in this direction i.e current cell does not have 3 walls.
-				while (NoOfWalls(cells[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
+				while (NoOfWalls(mazeCells[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
 				{
 					// Mark the current cell as a wall if it hasn't been done already. 
-					if (cells [nextPos + direction].type != CellS.TileType.Wall)
+					if (mazeCells [nextPos + direction].type != CellS.TileType.Wall)
 					{
-						cells [nextPos + direction].type = CellS.TileType.Wall;
+						mazeCells [nextPos + direction].type = CellS.TileType.Wall;
 					}
 						
 					// Move along the passageway.
@@ -373,26 +393,26 @@ public class MazeWithRooms : MonoBehaviour {
 				// Add a wall to the opposite direction on our current non-dead end cell- the way back into the passage we just filled in. 
 				if (direction.y == -1)
 				{
-					cells [nextPos].wallU = true;
+					mazeCells [nextPos].wallU = true;
 				}
 				else if (direction.y == 1)
 				{
-					cells [nextPos].wallD = true;
+					mazeCells [nextPos].wallD = true;
 				}
 				else if (direction.x == -1)
 				{
-					cells [nextPos].wallR = true;
+					mazeCells [nextPos].wallR = true;
 				}
 				else if (direction.x == 1)
 				{
-					cells [nextPos].wallL = true;
+					mazeCells [nextPos].wallL = true;
 				}
 
 				// If our current cell now has 3 walls, it's a dead end, so update our dead end list.
 				// else we're done with this dead end, so remove it.
-				if (NoOfWalls(cells [nextPos]) == 3)
+				if (NoOfWalls(mazeCells [nextPos]) == 3)
 				{
-					deadEnds [j] = cells [nextPos];
+					deadEnds [j] = mazeCells [nextPos];
 				}
 				else
 				{
@@ -405,7 +425,7 @@ public class MazeWithRooms : MonoBehaviour {
 		}
 		// Set all tiles which are now walls tohave all walls active to avoid random gaps against walls and for later calculation.
 		// All activated at the end to avoid confusing loop adding calculations.
-		foreach (KeyValuePair<Vector2, CellS> c in cells)
+		foreach (KeyValuePair<Vector2, CellS> c in mazeCells)
 		{
 			if (c.Value.type == CellS.TileType.Wall)
 			{
@@ -463,8 +483,8 @@ public class MazeWithRooms : MonoBehaviour {
 							// Find the position of a neighbour on the grid, relative to the current cell. 
 							Vector2 nPos = currentPos + possibleNeighbours[j];
 							// Check the neighbouring cell exists. 
-							if (cells.ContainsKey (nPos))
-								neighbours.Add(cells [nPos]);
+							if (mazeCells.ContainsKey (nPos))
+								neighbours.Add(mazeCells [nPos]);
 						}
 					}
 					// Choose a random direction i.e. a random neighbour.
@@ -527,7 +547,7 @@ public class MazeWithRooms : MonoBehaviour {
 							cCell = new Vector2 (x, y);
 							// Check the current cell's neighbours. 
 							Vector2 currentPos = cCell;
-							bool isAdjacentC = false;
+                            bool isAdjacentC = false;
 							CellS current = cells [cCell];
 							for (int j = 0; j < possibleNeighbours.Length; j++) {
 								// Find the position of a neighbour on the grid, relative to the current cell. 
@@ -664,8 +684,8 @@ public class MazeWithRooms : MonoBehaviour {
 			// Find the position of a neighbour on the grid, relative to the current cell. 
 			Vector2 nPos = currentPos + p;
 			// Check the neighbouring cell exists. 
-			if (cells.ContainsKey (nPos))
-				nCell = cells [nPos];
+			if (mazeCells.ContainsKey (nPos))
+				nCell = mazeCells [nPos];
 
 			// Check if the neighbouring cell is unvisited and thus a valid neighbour. 
 			if (!nCell.visited)
@@ -720,6 +740,99 @@ public class MazeWithRooms : MonoBehaviour {
 
 		return count;
 	}
+
+    public void DoubleDungeon()
+    {
+        // Set the dimensions of our dungeon solutions. 
+        dungeonRows = mazeRows * 2 + 1;
+        dungeonColumns = mazeColumns * 2 + 1;
+
+        // Update existing cells.
+        for (int x = 0; x < mazeColumns; x++)
+        {
+            for (int y = 0; y < mazeRows; y++)
+            {
+                CellS mazeCell = mazeCells[new Vector2(x, y)];
+                
+                Vector2 oldPos = new Vector2(mazeCell.gridPos.x, mazeCell.gridPos.y);
+                Vector2 oldSpawn = new Vector2(mazeCell.spawnPos.x, mazeCell.spawnPos.y);
+
+                CellS dungeonCell = new CellS(mazeCell);
+
+                dungeonCell.gridPos = mazeCell.gridPos * 2;
+                dungeonCell.spawnPos = new Vector2(oldSpawn.x + cellSize * x, oldSpawn.y + cellSize * y);
+
+                dungeonCells.Add(dungeonCell.gridPos, dungeonCell);
+
+                // Add spacers for this doubled cell. 
+                CellS spacerX = new CellS();
+                spacerX.gridPos = new Vector2(dungeonCell.gridPos.x + 1, dungeonCell.gridPos.y);
+                spacerX.spawnPos = new Vector2(dungeonCell.spawnPos.x + 1, dungeonCell.spawnPos.y);
+
+                //Determine the type of this spacer cell. Default is wall.
+                spacerX.type = CellS.TileType.Wall;
+                // If the current cell is a corridor, spacer cell needs to connect to its old neighbours
+                if (dungeonCell.type == CellS.TileType.Corridor)
+                {
+                    // Check each neighbour for if its a corridor and if the walls are connected between it and the current cell.
+                    Vector2 nPos = mazeCell.gridPos;
+
+                    //Right neighbour
+                    nPos = mazeCell.gridPos + possibleNeighbours[1];
+
+                    if (mazeCells.ContainsKey(nPos))
+                    {
+                        CellS n = mazeCells[nPos];
+                        if (n.type == CellS.TileType.Corridor && (!mazeCell.wallR && !n.wallL))
+                        {
+                            spacerX.type = CellS.TileType.Corridor;
+                            spacerX.wallR = false;
+                            spacerX.wallL = false;
+
+                        }
+                    }
+                }
+                dungeonCells.Add(spacerX.gridPos, spacerX);
+
+                CellS spacerY = new CellS();
+                spacerY.gridPos = new Vector2(dungeonCell.gridPos.x, dungeonCell.gridPos.y + 1);
+                spacerY.spawnPos = new Vector2(dungeonCell.spawnPos.x, dungeonCell.spawnPos.y + 1);
+                spacerY.type = CellS.TileType.Wall;
+                if (dungeonCell.type == CellS.TileType.Corridor)
+                {
+
+                    //Check each neighbour for if its a corridor and if the walls are connected between it and the current cell.
+                    Vector2 nPos = mazeCell.gridPos;
+
+                    //Above neighbour
+                    nPos = mazeCell.gridPos + possibleNeighbours[2];
+                    if (mazeCells.ContainsKey(nPos))
+                    {
+
+                        CellS n = mazeCells[nPos];
+                        if (n.type == CellS.TileType.Corridor && (!mazeCell.wallU && !n.wallD))
+                        {
+                            spacerY.type = CellS.TileType.Corridor;
+                            spacerY.wallU = false;
+                            spacerY.wallD = false;
+                        }
+                    }
+
+
+                }
+
+                dungeonCells.Add(spacerY.gridPos, spacerY);
+
+                // Diagonal spacer will always be a wall as the seperator between rows.
+                CellS spacerXY = new CellS();
+                spacerXY.gridPos = new Vector2(dungeonCell.gridPos.x + 1, dungeonCell.gridPos.y + 1);
+                spacerXY.spawnPos = new Vector2(dungeonCell.spawnPos.x + 1, dungeonCell.spawnPos.y + 1);
+                spacerXY.type = CellS.TileType.Wall;
+
+                dungeonCells.Add(spacerXY.gridPos, spacerXY);
+            }
+        }
+    }
 
     /* LOCKS AND KEYS */
     /* PATHFINDING */
@@ -907,6 +1020,7 @@ public class MazeWithRooms : MonoBehaviour {
         while (!validSpawn)
         {
             Vector2 pos = new Vector2(Random.Range(0, mazeRows), Random.Range(0, mazeColumns));
+            //Debug.Log(string.Format("Spawn position: {0}, {1}", pos.x, pos.y));
             spawnTile = cells[pos];
             if (spawnTile.type == CellS.TileType.Corridor)
             {

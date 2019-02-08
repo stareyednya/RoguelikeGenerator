@@ -6,7 +6,7 @@ public class CellS  {
 
 	public enum TileType
 	{
-		Corridor, Wall, Room, Spawn
+		Corridor, Wall, Room, Spawn, Spacer
 	}
 
 	public Vector2 gridPos;
@@ -38,4 +38,24 @@ public class CellS  {
 			return g + h;	
 		}
 	}
+
+    public CellS()
+    {
+        wallD = true;
+        wallL = true;
+        wallR = true;
+        wallU = true;
+        visited = false;
+        type = TileType.Corridor;
+    }
+
+    public CellS(CellS copy)
+    {
+        wallD = copy.wallD;
+        wallL = copy.wallL;
+        wallR = copy.wallR;
+        wallU = copy.wallU;
+        visited = copy.visited;
+        type = copy.type;
+    }
 }
