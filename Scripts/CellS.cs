@@ -6,7 +6,7 @@ public class CellS  {
 
 	public enum TileType
 	{
-		Corridor, Wall, Room, Spawn, Spacer
+		Corridor, Wall, Room, Spawn
 	}
 
 	public Vector2 gridPos;
