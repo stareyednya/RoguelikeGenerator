@@ -1289,7 +1289,6 @@ public class MazeWithRooms : MonoBehaviour {
         CellS keyCell = spawnRoom.roomCells[Random.Range(0, spawnRoom.roomCells.Count)];
         spawnRoom.hasKey = true;
         lockKeySpawns[currentLock] = new LockAndKey(lockCell, keyCell);
-        
     }
 
 }
