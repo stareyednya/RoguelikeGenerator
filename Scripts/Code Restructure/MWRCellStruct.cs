@@ -106,6 +106,8 @@ public class MWRCellStruct
             RoguelikeGenerator.instance.cells = dungeonCells;
             mazeRows = dungeonRows - 1;
             mazeColumns = dungeonColumns - 1;
+            RoguelikeGenerator.instance.doublingTime = Time.realtimeSinceStartup - RoguelikeGenerator.instance.totalGenTime;
+            RoguelikeGenerator.instance.totalGenTime += RoguelikeGenerator.instance.doublingTime;
         }
         else
         {

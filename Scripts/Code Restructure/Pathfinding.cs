@@ -23,6 +23,21 @@ public class Pathfinding
         return lowestCell;
     }
 
+    public static Cell FindLowestFScore(List<Cell> openList)
+    {
+        int lowestF = int.MaxValue;
+        Cell lowestCell = null;
+        foreach (Cell c in openList)
+        {
+            if (c.f < lowestF)
+            {
+                lowestF = c.f;
+                lowestCell = c;
+            }
+        }
+        return lowestCell;
+    }
+
     public static bool AreConnected(CellS currentCell, CellS neighbourCell)
     {
         bool connected = true;
@@ -58,6 +73,49 @@ public class Pathfinding
         else if (neighbourCell.gridPos.y < currentCell.gridPos.y)
         {
             if (currentCell.wallD && neighbourCell.wallU)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Down neighbour is not connected"));
+            }
+        }
+        return connected;
+    }
+
+    public static bool AreConnected(Cell currentCell, Cell neighbourCell)
+    {
+        bool connected = true;
+        // If neighbour is to the left of current. 
+        if (neighbourCell.gridPos.x < currentCell.gridPos.x)
+        {
+            if (currentCell.cScript.wallL.activeInHierarchy && neighbourCell.cScript.wallR.activeInHierarchy)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Left neighbour is not connected"));
+            }
+
+        }
+        // If neighbour is to the right of current. 
+        else if (neighbourCell.gridPos.x > currentCell.gridPos.x)
+        {
+            if (currentCell.cScript.wallR.activeInHierarchy && neighbourCell.cScript.wallL.activeInHierarchy)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Right neighbour is not connected"));
+            }
+        }
+        // If neighbour is above current. 
+        else if (neighbourCell.gridPos.y > currentCell.gridPos.y)
+        {
+            if (currentCell.cScript.wallU.activeInHierarchy && neighbourCell.cScript.wallD.activeInHierarchy)
+            {
+                connected = false;
+                //Debug.Log (string.Format ("Up neighbour is not connected"));
+            }
+        }
+        // If neighbour is below current. 
+        else if (neighbourCell.gridPos.y < currentCell.gridPos.y)
+        {
+            if (currentCell.cScript.wallD.activeInHierarchy && neighbourCell.cScript.wallU.activeInHierarchy)
             {
                 connected = false;
                 //Debug.Log (string.Format ("Down neighbour is not connected"));
@@ -104,6 +162,46 @@ public class Pathfinding
         return neighbours;
     }
 
+    public static List<Cell> GetNeighbours(Cell cCell, int currentLock)
+    {
+        List<Cell> neighbours = new List<Cell>();
+        Cell nCell = cCell;
+        // Store the position of our current cell. 
+        Vector2 currentPos = cCell.gridPos;
+
+        foreach (Vector2 p in possibleNeighbours)
+        {
+            // Find the position of a neighbour on the grid, relative to the current cell. 
+            Vector2 nPos = currentPos + p;
+            // Check the neighbouring cell exists. 
+            if (RoguelikeGenerator.instance.cellsP.ContainsKey(nPos))
+                nCell = RoguelikeGenerator.instance.cellsP[nPos];
+
+            // Check if the neighbouring cell is traversable and therefore a valid neighbour.
+            // Also check if the wall in that direction is active to prevent the case of jumping to a blocked off corridor. 
+            // (might be fixable when the dungeon is spaced out, but for now)
+            if (RoguelikeGenerator.instance.wallsP.ContainsKey(nCell.gridPos) && !RoguelikeGenerator.instance.wallsP[nCell.gridPos].cellObject.activeInHierarchy && nCell.gridPos != RoguelikeGenerator.instance.lockKeySpawns[currentLock].lockInstance.gridPos)
+            {
+                if (((RoguelikeGenerator.instance.cellsP.ContainsKey(nCell.gridPos) && RoguelikeGenerator.instance.cellsP[nCell.gridPos].cellObject.activeInHierarchy) 
+                    && RoguelikeGenerator.instance.cellsP.ContainsKey(cCell.gridPos) && RoguelikeGenerator.instance.cellsP[cCell.gridPos].cellObject.activeInHierarchy)
+                    || ((RoguelikeGenerator.instance.roomsP.ContainsKey(nCell.gridPos) && RoguelikeGenerator.instance.roomsP[nCell.gridPos].cellObject.activeInHierarchy)
+                    && RoguelikeGenerator.instance.roomsP.ContainsKey(cCell.gridPos) && RoguelikeGenerator.instance.roomsP[cCell.gridPos].cellObject.activeInHierarchy))
+                {
+                    if (AreConnected(cCell, nCell))
+                        neighbours.Add(nCell);
+                }
+                else
+                {
+                    neighbours.Add(nCell);
+                }
+            }
+
+        }
+
+        // Return the completed list of traversable neighbours.
+        return neighbours;
+    }
+
     public static float ManhattanDistance(CellS c, CellS t)
     {
         // Manhattan distance is the sum of the absolute values of the horizontal and the vertical distance
@@ -111,5 +209,12 @@ public class Pathfinding
         return h;
     }
 
-    
+    public static float ManhattanDistance(Cell c, Cell t)
+    {
+        // Manhattan distance is the sum of the absolute values of the horizontal and the vertical distance
+        float h = Mathf.Abs(c.gridPos.x - t.gridPos.x) + Mathf.Abs(c.gridPos.y - t.gridPos.y);
+        return h;
+    }
+
+
 }

@@ -6,11 +6,23 @@ public class RoguelikeGenerator : MonoBehaviour {
 
     // Singleton instance of RLG to allow variable access and editing in inspector without using static everywhere. 
     public static RoguelikeGenerator instance = null;
-
+    
+    // Used with methods that make use of the cell structure method. 
     public Dictionary<Vector2, CellS> cells;
+    // Used with methods that make use of early instantiation methods. 
+    public Dictionary<Vector2, Cell> instantiateCells = new Dictionary<Vector2, Cell>();
+    // Contain groups of cells that make up a room with their information. 
     public List<Room> rooms = new List<Room>();
     // List for cells that're found to be next to a corridor in a room. 
     public List<CellS> adjCells = new List<CellS>();
+    public List<Cell> adjCellsInstances = new List<Cell>();
+
+    // Object pools. 
+    // Hold and locate all the cells in the maze. 
+    public Dictionary<Vector2, Cell> cellsP = new Dictionary<Vector2, Cell>();
+    // Matching set of wall objects to instantiate.
+    public Dictionary<Vector2, Cell> wallsP = new Dictionary<Vector2, Cell>();
+    public Dictionary<Vector2, Cell> roomsP = new Dictionary<Vector2, Cell>();
 
     // How large a final result is wanted. WIll be passed to maze generation as is if not doubling dungeon, halved otherwise. 
     public int dungeonRows;
@@ -52,26 +64,31 @@ public class RoguelikeGenerator : MonoBehaviour {
 
     // Keep a unique reference to the specific tile the player spawns at- will be used for A*.
     public CellS playerSpawn;
+    public Cell playerSpawnInstance;
 
     // Options for the full level generation to run. 
-    public bool mazeWithRooms; // default MWR with all the instantation 
+    public bool MWRInstantiate; // default MWR with all the instantation 
 	public bool MWRPooling; // MWR using pooling for swapping floor and wall tiles
 	public bool MWRStruct; // MWR instantiating all tiles at the end 
-    public  bool doubleDungeon; // space out the dungeon or not. 
+    public bool BSPTree; // BSP tree generation (cell struct)
+    public bool doubleDungeon; // space out the dungeon or not. 
+    public bool seed; // generate the same map every time
 
     // Currently storing the time since the scene started in here to save processing time with a write to disk for a debug statement. 
     public float gridGenTime;
     public float mazeGenTime;
     public float sparseTime;
     public float loopTime;
+    public float doublingTime;
     public float roomTime;
+    public float lockTime;
     public float instantiationTime;
     public float totalGenTime;
 
     // Organise the editor hierarchy. 
-    private GameObject mazeParent;
-    private GameObject wallParent;
-    private GameObject roomParent;
+    public GameObject mazeParent;
+    public GameObject wallParent;
+    public GameObject roomParent;
 
     // Use this for initialization
     void Awake () {
@@ -80,10 +97,14 @@ public class RoguelikeGenerator : MonoBehaviour {
         else if (instance != this)
             Destroy(gameObject); // So we do not have more than one instance.
 
+        if (seed)
+            Random.InitState(42);
+
         if (doubleDungeon)
         {
             mazeRows = dungeonRows / 2;
             mazeColumns = dungeonColumns / 2;
+            sparseness /= 4;
         }
         else
         {
@@ -91,26 +112,82 @@ public class RoguelikeGenerator : MonoBehaviour {
             mazeColumns = dungeonColumns;
         }
 
+        mazeParent = new GameObject();
+        mazeParent.transform.position = Vector2.zero;
+        mazeParent.name = "Maze";
+
+
+        wallParent = new GameObject();
+        wallParent.transform.position = Vector2.zero;
+        wallParent.name = "Walls";
+
+        roomParent = new GameObject();
+        roomParent.transform.position = Vector2.zero;
+        roomParent.name = "Rooms";
+
         if (MWRStruct)
+        {
             new MWRCellStruct(mazeRows, mazeColumns);
+            PlacePlayerSpawn();
 
-        PlacePlayerSpawn();
+            // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
+            if (noOfLocks >= noOfRooms)
+            {
+                noOfLocks = noOfRooms - 1;
+            }
+            if (noOfLocks > lockPrefabs.Length)
+            {
+                noOfLocks = lockPrefabs.Length;
+            }
+            lockKeySpawns = new LockAndKey[noOfLocks];
+            new LockKeyPlacer(noOfLocks);
 
-        // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
-        if (noOfLocks >= noOfRooms)
-        {
-            noOfLocks = noOfRooms - 1;
+            lockTime = Time.realtimeSinceStartup - totalGenTime;
+            totalGenTime += lockTime;
+
+            InstantiateGrid();
+            instantiationTime = Time.realtimeSinceStartup - totalGenTime;
+            totalGenTime += instantiationTime;
         }
-        if (noOfLocks > lockPrefabs.Length)
+        else if (MWRPooling)
         {
-            noOfLocks = lockPrefabs.Length;
-        }
-        lockKeySpawns = new LockAndKey[noOfLocks];
-        new LockKeyPlacer(noOfLocks);
+            new MWRPooling(mazeRows, mazeColumns);
 
-        InstantiateGrid();
-        instantiationTime = Time.realtimeSinceStartup - totalGenTime;
-        totalGenTime += instantiationTime;
+            // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
+            if (noOfLocks >= noOfRooms)
+            {
+                noOfLocks = noOfRooms - 1;
+            }
+            if (noOfLocks > lockPrefabs.Length)
+            {
+                noOfLocks = lockPrefabs.Length;
+            }
+            lockKeySpawns = new LockAndKey[noOfLocks];
+            new LockKeyPlacer(noOfLocks, true);
+        }
+        else if (MWRInstantiate)
+        {
+            new MWRInstantiate(mazeRows, mazeColumns);
+            // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
+            if (noOfLocks >= noOfRooms)
+            {
+                noOfLocks = noOfRooms - 1;
+            }
+            if (noOfLocks > lockPrefabs.Length)
+            {
+                noOfLocks = lockPrefabs.Length;
+            }
+            lockKeySpawns = new LockAndKey[noOfLocks];
+            new LockKeyPlacer(noOfLocks, true);
+        }
+        else if (BSPTree)
+        {
+            cells = new Dictionary<Vector2, CellS>();
+            new BSPTree(mazeRows, mazeColumns);
+            InstantiateGrid();
+        }
+
+       
     }
 
     public void PlacePlayerSpawn()
@@ -136,18 +213,7 @@ public class RoguelikeGenerator : MonoBehaviour {
     // Instantiate our finished grid. 
     public void InstantiateGrid()
     {
-        mazeParent = new GameObject();
-        mazeParent.transform.position = Vector2.zero;
-        mazeParent.name = "Maze";
-
-
-        wallParent = new GameObject();
-        wallParent.transform.position = Vector2.zero;
-        wallParent.name = "Walls";
-
-        roomParent = new GameObject();
-        roomParent.transform.position = Vector2.zero;
-        roomParent.name = "Rooms";
+        
 
         foreach (KeyValuePair<Vector2, CellS> c in cells)
         {

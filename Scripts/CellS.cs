@@ -49,6 +49,16 @@ public class CellS  {
         type = TileType.Corridor;
     }
 
+    public CellS(TileType t)
+    {
+        wallD = true;
+        wallL = true;
+        wallR = true;
+        wallU = true;
+        visited = false;
+        type = t;
+    }
+
     public CellS(CellS copy)
     {
         wallD = copy.wallD;
