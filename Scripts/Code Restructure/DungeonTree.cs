@@ -25,6 +25,7 @@ public class DungeonTree
         // Temporary list of leaves to add to prevent modifying the collection while iterating. 
         List<RegionNode> toAdd = new List<RegionNode>();
         // Loop through every leaf in the tree until no more can be split. 
+        int noOfSplits = 0;
         while (didSplit)
         {
             didSplit = false;
@@ -39,6 +40,7 @@ public class DungeonTree
                         toAdd.Add(r.children[0]);
                         toAdd.Add(r.children[1]);
                         didSplit = true;
+                        noOfSplits++;
                     }
                 }
             }

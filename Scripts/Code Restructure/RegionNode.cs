@@ -90,13 +90,16 @@ public class RegionNode
     // Generate all rooms and corridors for this leaf and all its children. 
     public void CreateRooms()
     {
-        if (children[0] != null || children[1] != null)
+        if (children != null)
         {
             // This leaf has been split, so go into the children leaves.
-            children[0].CreateRooms();
-            children[1].CreateRooms();
+            if (children[0] != null)
+                children[0].CreateRooms();
+            if (children[1] != null)
+                children[1].CreateRooms();
 
-            CreateCorridors(children[0], children[1]);
+            if (children[0].room != Vector2Int.zero && children[1].room != Vector2Int.zero)
+                CreateCorridors(children[0], children[1]);
         }
         else
         {
@@ -147,16 +150,43 @@ public class RegionNode
         }
     }
 
-    // Takes a pair of rooms, picks a random point in both, and creates a 'room' to connect the points together. 
+    // Connect the centres of the given nodes.
     public void CreateCorridors(RegionNode l, RegionNode r)
     {
         corridors = new List<Corridor>();
 
-        Vector2Int p1 = new Vector2Int(Random.Range(l.room.x + 1, l.room.x + l.roomSize.x - 2), Random.Range(l.room.y + 1, l.room.y + l.roomSize.y - 2));
-        Vector2Int p2 = new Vector2Int(Random.Range(r.room.x + 1, r.room.x + r.roomSize.x - 2), Random.Range(r.room.y + 1, r.room.y + r.roomSize.y - 2));
+        //Vector2 leftCentre = l.FindRoomCentre();
+        //Vector2 rightCentre = r.FindRoomCentre();
+        //Debug.Log(string.Format("Connecting {0}, {1} and {2}, {3}", leftCentre.x, leftCentre.y, rightCentre.x, rightCentre.y));
+
+        //Vector2 direction = (rightCentre - leftCentre);
+
+        //while (Vector2.Distance(leftCentre, rightCentre) > 1)
+        //{
+
+        //   Vector2Int gridPos = Vector2Int.RoundToInt(leftCentre);
+        //   if (RoguelikeGenerator.instance.cells[gridPos].type != CellS.TileType.Room)
+        //        RoguelikeGenerator.instance.cells[gridPos].type = CellS.TileType.Corridor;
+
+
+        //    leftCentre.x += direction.normalized.x;
+        //    leftCentre.y += direction.normalized.y;
+        //}
+
+        
+
+        Vector2Int p1 = new Vector2Int(Random.Range(l.room.x + 1, l.room.x + l.roomSize.x - 1), Random.Range(l.room.y + 1, l.room.y + l.roomSize.y - 1));
+        Vector2Int p2 = new Vector2Int(Random.Range(r.room.x + 1, r.room.x + r.roomSize.x - 1), Random.Range(r.room.y + 1, r.room.y + r.roomSize.y - 1));
+
+        //Vector2Int p1 = l.FindRoomCentre();
+        //Vector2Int p2 = r.FindRoomCentre();
+
+        Debug.Log(string.Format("connecting {0},{1} and {2} {3}", p1.x, p1.y, p2.x, p2.y));
 
         int w = p2.x - p1.x;
         int h = p2.y - p2.x;
+
+        Debug.Log(string.Format("w= {0}, h={1}", w, h));
 
         if (w < 0)
         {
@@ -206,18 +236,46 @@ public class RegionNode
 
         foreach (Corridor c in corridors)
         {
-            // Convert these cells on the grid to be corridors. 
-            for (int x = c.x; x < c.x + width; x++)
+            if (c.height == 1)
             {
-                for (int y = c.y; y < c.y + height; y++)
+                for (int x = c.x; x < c.x + c.width; x++)
                 {
-                    Vector2 gridPos = new Vector2(x, y);
+                    Vector2 gridPos = new Vector2(x, c.y);
+                    //Debug.Log(string.Format("Poition {0}, {1}", gridPos.x, gridPos.y));
+                    if (RoguelikeGenerator.instance.cells.ContainsKey(gridPos))
+                        RoguelikeGenerator.instance.cells[gridPos].type = CellS.TileType.Corridor;
+                }
+            }
+            else if (c.width == 1)
+            {
+                for (int y = c.y; y < c.y + c.height; y++)
+                {
+                    Vector2 gridPos = new Vector2(c.x, y);
                     //Debug.Log(string.Format("Poition {0}, {1}", gridPos.x, gridPos.y));
                     if (RoguelikeGenerator.instance.cells.ContainsKey(gridPos))
                         RoguelikeGenerator.instance.cells[gridPos].type = CellS.TileType.Corridor;
 
                 }
             }
+
+
+            //// Convert these cells on the grid to be corridors. 
+            //for (int x = c.x; x < c.x + width; x++)
+            //{
+            //    for (int y = c.y; y < c.y + height; y++)
+            //    {
+            //        Vector2 gridPos = new Vector2(x, y);
+            //        //Debug.Log(string.Format("Poition {0}, {1}", gridPos.x, gridPos.y));
+            //        if (RoguelikeGenerator.instance.cells.ContainsKey(gridPos) && RoguelikeGenerator.instance.cells[gridPos].type != CellS.TileType.Room)
+            //            RoguelikeGenerator.instance.cells[gridPos].type = CellS.TileType.Corridor;
+
+            //    }
+            //}
         }
+    }
+
+    public Vector2Int FindRoomCentre()
+    {
+        return new Vector2Int(room.x + roomSize.x / 2, room.y + roomSize.y / 2);
     }
 }

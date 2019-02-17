@@ -46,6 +46,7 @@ public class RoguelikeGenerator : MonoBehaviour {
 
     // How many lock and key pairs to place. 
     public int noOfLocks;
+   
 
     // The prefab to use as the cell icon. 
 	public GameObject cellPrefab;
