@@ -7,16 +7,74 @@ public class LockKeyPlacer
     // Index for which pair we're currently placing.
     private int currentLock = 0;
 
+    CellS currentLockCell;
+    CellS currentKeyCell;
+
     public LockKeyPlacer(int noOfLocks)
     {
-        for (int i = 0; i < noOfLocks; i++)
+        int currentRoomNo = 0;
+        if (noOfLocks != 0)
+        {
+            // Place first lock and key randomly to start off the loop. 
+          
+            do
+            {
+                currentRoomNo = PlaceLocksInRoom();
+                MazeUtils.OpenDoorway(currentLockCell);
+            } while (!PathToSpawn());
+            currentLock++;
+
+            //List<CellS> bestPath = Pathfinding.BuildPath(RoguelikeGenerator.instance.playerSpawn);
+            //foreach (CellS c in bestPath)
+            //{
+            //    Debug.Log(string.Format("{0}, {1}", c.gridPos.x, c.gridPos.y));
+            //}
+            //Debug.Log(string.Format("First lock no: {0}", currentLockCell.roomNo));
+            //Debug.Log(string.Format("First key no: {0}", currentKeyCell.roomNo));
+            RoguelikeGenerator.instance.adjCells.Remove(currentLockCell);
+            //  Debug.Log(string.Format("Removing cell {0}, {1}", currentLockCell.gridPos.x, currentLockCell.gridPos.y));
+            RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock = true;
+            RoguelikeGenerator.instance.rooms[currentKeyCell.roomNo - 1].hasKey = true;
+            // also mark the room with the first key as being locked to prevent it from becoming barred off. 
+            RoguelikeGenerator.instance.rooms[currentKeyCell.roomNo - 1].hasLock = true;
+        }
+       
+
+        // Open the adjacent wall to the corridor to make a doorway.
+       // MazeUtils.OpenDoorway(currentLockCell);
+
+
+        // Create a loop from then on.
+        int nextRoomNo;
+        for (int i = 0; i < noOfLocks - 1; i++)
         {
             do
             {
-                PlaceLocks();
+                nextRoomNo = PlaceLocksInGivenRoom(currentRoomNo);
+                MazeUtils.OpenDoorway(currentLockCell);
             } while (!PathToSpawn());
+            currentRoomNo = nextRoomNo;
+            //Debug.Log(string.Format("Next lock no: {0}", currentLockCell.roomNo));
+           // Debug.Log(string.Format("Next key no: {0}", currentKeyCell.roomNo));
             currentLock++;
+            RoguelikeGenerator.instance.adjCells.Remove(currentLockCell);
+            //Debug.Log(string.Format("Removing cell {0}, {1}", currentLockCell.gridPos.x, currentLockCell.gridPos.y));
+            RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock = true;
+            RoguelikeGenerator.instance.rooms[currentKeyCell.roomNo - 1].hasKey = true;
+            MazeUtils.OpenDoorway(currentLockCell);
         }
+
+        
+        
+
+        //for (int i = 0; i < noOfLocks; i++)
+        //{
+        //    do
+        //    {
+        //        PlaceLocks();
+        //    } while (!PathToSpawn());
+        //    currentLock++;
+        //}
     }
 
     public LockKeyPlacer(int noOfLocks, bool b)
@@ -31,9 +89,17 @@ public class LockKeyPlacer
     public void PlaceLocks()
     {
         // Choose a random tile that connects a room to a corridor and place the lock there. 
-        CellS lockCell = RoguelikeGenerator.instance.adjCells[Random.Range(0, RoguelikeGenerator.instance.adjCells.Count)];
+        //CellS lockCell;
+        do
+        {
+            currentLockCell = RoguelikeGenerator.instance.adjCells[Random.Range(0, RoguelikeGenerator.instance.adjCells.Count)];
+        } while (RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock);
+        
+        
         // Remove this adjacent cell from consideration so locks dont overlap.
-        RoguelikeGenerator.instance.adjCells.Remove(lockCell);
+        //RoguelikeGenerator.instance.adjCells.Remove(lockCell);
+        //Debug.Log(string.Format("Removing cell {0}, {1}", lockCell.gridPos.x, lockCell.gridPos.y));
+        //RoguelikeGenerator.instance.rooms[lockCell.roomNo - 1].hasLock = true;
 
 
         // Choose a random room from those available that don't already hold a key, then a random cell in it. 
@@ -45,8 +111,140 @@ public class LockKeyPlacer
 
         CellS keyCell = spawnRoom.roomCells[Random.Range(0, spawnRoom.roomCells.Count)];
         spawnRoom.hasKey = true;
-        RoguelikeGenerator.instance.lockKeySpawns[currentLock] = new LockAndKey(lockCell, keyCell);
+        RoguelikeGenerator.instance.lockKeySpawns[currentLock] = new LockAndKey(currentLockCell, keyCell);
     }
+
+    // Test to return room number of the room the lock was placed in.
+    public int PlaceLocksInRoom()
+    {
+        // Place first key in a random room. 
+
+        Room spawnRoom;
+        do
+        {
+            spawnRoom = RoguelikeGenerator.instance.rooms[Random.Range(0, RoguelikeGenerator.instance.rooms.Count)];
+        } while (spawnRoom.hasKey);
+
+        //CellS keyCell;
+        do
+        {
+            currentKeyCell = spawnRoom.roomCells[Random.Range(0, spawnRoom.roomCells.Count)];
+        } while (!validKeyCell(currentKeyCell));
+
+        // Place first lock in a random room. 
+        do
+        {
+            currentLockCell = RoguelikeGenerator.instance.adjCells[Random.Range(0, RoguelikeGenerator.instance.adjCells.Count)];
+        } while (RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock || currentLockCell.roomNo == currentKeyCell.roomNo);
+
+
+
+        // Choose a random tile that connects a room to a corridor and place the lock there. 
+        // CellS lockCell;
+        //do
+        //{
+        //    currentLockCell = RoguelikeGenerator.instance.adjCells[Random.Range(0, RoguelikeGenerator.instance.adjCells.Count)];
+        //} while (RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock);
+
+
+        //// Remove this adjacent cell from consideration so locks dont overlap.
+        ////RoguelikeGenerator.instance.adjCells.Remove(lockCell);
+        ////Debug.Log(string.Format("Removing cell {0}, {1}", lockCell.gridPos.x, lockCell.gridPos.y));
+        ////RoguelikeGenerator.instance.rooms[lockCell.roomNo - 1].hasLock = true;
+
+
+        //// Choose a random room from those available that don't already hold a key, then a random cell in it. 
+        //Room spawnRoom;
+        //do
+        //{
+        //    spawnRoom = RoguelikeGenerator.instance.rooms[Random.Range(0, RoguelikeGenerator.instance.rooms.Count)];
+        //} while (spawnRoom.hasKey);
+
+        ////CellS keyCell;
+        //do
+        //{
+        //    currentKeyCell = spawnRoom.roomCells[Random.Range(0, spawnRoom.roomCells.Count)];
+        //} while (!validKeyCell(currentKeyCell));
+       
+        //spawnRoom.hasKey = true;
+        RoguelikeGenerator.instance.lockKeySpawns[currentLock] = new LockAndKey(currentLockCell, currentKeyCell);
+
+        return currentLockCell.roomNo;
+    }
+
+    public int PlaceLocksInGivenRoom(int roomNo)
+    {
+        // Place this next key in the room of the previous lock. 
+
+        Room keyRoom;
+        keyRoom = RoguelikeGenerator.instance.rooms[roomNo - 1];
+        do
+        {
+            currentKeyCell = keyRoom.roomCells[Random.Range(0, keyRoom.roomCells.Count)];
+        } while (!validKeyCell(currentKeyCell));
+
+        // Place the next lock in a random room that doesn't already have a lock or key. 
+        do
+        {
+            currentLockCell = RoguelikeGenerator.instance.adjCells[Random.Range(0, RoguelikeGenerator.instance.adjCells.Count)];
+        } while (RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock);
+
+
+        // Choose a random tile that connects a room to a corridor and place the lock there. 
+        //CellS lockCell;
+       // do
+       // {
+       //     currentLockCell = RoguelikeGenerator.instance.adjCells[Random.Range(0, RoguelikeGenerator.instance.adjCells.Count)];
+       // } while (RoguelikeGenerator.instance.rooms[currentLockCell.roomNo - 1].hasLock);
+
+
+       // // Remove this adjacent cell from consideration so locks dont overlap.
+       // //RoguelikeGenerator.instance.adjCells.Remove(lockCell);
+       // //Debug.Log(string.Format("Removing cell {0}, {1}", lockCell.gridPos.x, lockCell.gridPos.y));
+       // //RoguelikeGenerator.instance.rooms[lockCell.roomNo - 1].hasLock = true;
+
+       // // Place the key at a random point in the given room. 
+       //// Room keyRoom = RoguelikeGenerator.instance.rooms[roomNo - 1];
+       // //CellS keyCell = keyRoom.roomCells[Random.Range(0, keyRoom.roomCells.Count)];
+
+       // // Choose a random room from those available that don't already hold a key, then a random cell in it. 
+       // Room spawnRoom;
+       // do
+       // {
+       //     spawnRoom = RoguelikeGenerator.instance.rooms[Random.Range(0, RoguelikeGenerator.instance.rooms.Count)];
+       // } while (spawnRoom.hasKey);
+
+       // //CellS keyCell;
+       // do
+       // {
+       //     currentKeyCell = spawnRoom.roomCells[Random.Range(0, spawnRoom.roomCells.Count)];
+       // } while (!validKeyCell(currentKeyCell));
+
+        //spawnRoom.hasKey = true;
+        RoguelikeGenerator.instance.lockKeySpawns[currentLock] = new LockAndKey(currentLockCell, currentKeyCell);
+
+        // Return the next room to place the key behind. 
+        return currentLockCell.roomNo;
+    }
+
+    // Helper to determine if the chosen key cell already holds something.
+    public bool validKeyCell(CellS keyCell)
+    {
+        foreach (LockAndKey lk in RoguelikeGenerator.instance.lockKeySpawns)
+        {
+            if (lk != null)
+            {
+                if (lk.lockSpawn == keyCell || RoguelikeGenerator.instance.adjCells.Contains(keyCell))
+                {
+                    return false;
+                }
+            }
+           
+        }
+        return true;
+    }
+
+    
 
     public void PlaceLocksInPool()
     {
@@ -132,7 +330,8 @@ public class LockKeyPlacer
 
         if (!closedList.Contains(RoguelikeGenerator.instance.playerSpawn))
         {
-            Debug.Log("No valid path found. Replacing key");
+            //Debug.Log("No valid path found. Replacing key");
+            RoguelikeGenerator.instance.replacementCount++;
             validKey = false;
         }
 

@@ -1,6 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEditor;
+using System.IO;
 
 public class RoguelikeGenerator : MonoBehaviour {
 
@@ -28,11 +30,14 @@ public class RoguelikeGenerator : MonoBehaviour {
     public int dungeonRows;
     public int dungeonColumns;
 
+    [HideInInspector]
     public int mazeRows;
+    [HideInInspector]
     public int mazeColumns;
 
     // How much rock to fill back in. 
     public int sparseness;
+    private int actualSparseness;
 
     // The chance of a dead end being filled back in. 
     public int removalChance;
@@ -56,6 +61,8 @@ public class RoguelikeGenerator : MonoBehaviour {
 	public GameObject roomPrefab;
     // The tile to represent where the player spawns.
     public GameObject spawnPrefab;
+    // The tile to represent where the player leaves the level. 
+    public GameObject exitPrefab;
 
     // Arrays of lock and key prefabs, both in matching order of their colour to place the same two at the same time.
     public GameObject[] lockPrefabs;
@@ -67,6 +74,8 @@ public class RoguelikeGenerator : MonoBehaviour {
     public CellS playerSpawn;
     public Cell playerSpawnInstance;
 
+    public CellS exitSpawn;
+
     // Options for the full level generation to run. 
     public bool MWRInstantiate; // default MWR with all the instantation 
 	public bool MWRPooling; // MWR using pooling for swapping floor and wall tiles
@@ -74,8 +83,10 @@ public class RoguelikeGenerator : MonoBehaviour {
     public bool BSPTree; // BSP tree generation (cell struct)
     public bool doubleDungeon; // space out the dungeon or not. 
     public bool seed; // generate the same map every time
+    public bool test; // Immediately restart the process for use with a mouse macro and output to CSV
 
     // Currently storing the time since the scene started in here to save processing time with a write to disk for a debug statement. 
+    public float startupTime;
     public float gridGenTime;
     public float mazeGenTime;
     public float sparseTime;
@@ -87,20 +98,32 @@ public class RoguelikeGenerator : MonoBehaviour {
     public float totalGenTime;
 
     // Organise the editor hierarchy. 
+    [HideInInspector]
     public GameObject mazeParent;
+    [HideInInspector]
     public GameObject wallParent;
+    [HideInInspector]
     public GameObject roomParent;
 
+    public int replacementCount = 0;
+
     // Use this for initialization
-    void Awake () {
+    void Start () {
+        // To account for unity splash screen.
+        startupTime = Time.realtimeSinceStartup;
+        totalGenTime = startupTime;
+
         if (instance == null)
             instance = this;
         else if (instance != this)
             Destroy(gameObject); // So we do not have more than one instance.
 
         if (seed)
-            Random.InitState(42);
+            Random.InitState(104);
 
+        Debug.Log(string.Format("Random seed: {0}", Random.state));
+
+        actualSparseness = sparseness;
         if (doubleDungeon)
         {
             mazeRows = dungeonRows / 2;
@@ -128,8 +151,10 @@ public class RoguelikeGenerator : MonoBehaviour {
 
         if (MWRStruct)
         {
-            new MWRCellStruct(mazeRows, mazeColumns);
-            PlacePlayerSpawn();
+           new MWRCellStruct(mazeRows, mazeColumns);
+            //yield return null;
+            
+           PlacePlayerSpawn();
 
             // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
             if (noOfLocks >= noOfRooms)
@@ -146,6 +171,9 @@ public class RoguelikeGenerator : MonoBehaviour {
             lockTime = Time.realtimeSinceStartup - totalGenTime;
             totalGenTime += lockTime;
 
+            PlaceExit();
+            ExplorePath();
+
             InstantiateGrid();
             instantiationTime = Time.realtimeSinceStartup - totalGenTime;
             totalGenTime += instantiationTime;
@@ -153,6 +181,7 @@ public class RoguelikeGenerator : MonoBehaviour {
         else if (MWRPooling)
         {
             new MWRPooling(mazeRows, mazeColumns);
+           // yield return null;
 
             // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
             if (noOfLocks >= noOfRooms)
@@ -169,6 +198,7 @@ public class RoguelikeGenerator : MonoBehaviour {
         else if (MWRInstantiate)
         {
             new MWRInstantiate(mazeRows, mazeColumns);
+           // yield return null;
             // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
             if (noOfLocks >= noOfRooms)
             {
@@ -185,8 +215,41 @@ public class RoguelikeGenerator : MonoBehaviour {
         {
             cells = new Dictionary<Vector2, CellS>();
             new BSPTree(mazeRows, mazeColumns);
+            //yield return null;
+            PlacePlayerSpawn();
+
+            // Safe guards for infinite loop of looking for new rooms or running out of prefabs.
+            if (noOfLocks >= noOfRooms)
+            {
+                noOfLocks = noOfRooms - 1;
+            }
+            if (noOfLocks > lockPrefabs.Length)
+            {
+                noOfLocks = lockPrefabs.Length;
+            }
+            
+
+            lockKeySpawns = new LockAndKey[noOfLocks];
+            new LockKeyPlacer(noOfLocks);
+
+            lockTime = Time.realtimeSinceStartup - totalGenTime;
+            totalGenTime += lockTime;
+
+            //List<CellS> bestPath = Pathfinding.BuildPath(playerSpawn);
+            //foreach (CellS c in bestPath)
+            //{
+            //    Debug.Log(string.Format("{0}, {1}", c.gridPos.x, c.gridPos.y));
+            //}
+
+            PlaceExit();
+
             InstantiateGrid();
+            instantiationTime = Time.realtimeSinceStartup - totalGenTime;
+            totalGenTime += instantiationTime;
         }
+
+        if (test)
+            WriteCSV();
 
        
     }
@@ -209,6 +272,40 @@ public class RoguelikeGenerator : MonoBehaviour {
         spawnTile.type = CellS.TileType.Spawn;
 
         playerSpawn = spawnTile;
+    }
+
+    // Probably needs some kind of pathfinding check to decide if it's too close to the spawn or not. 
+    public void PlaceExit()
+    {
+        CellS exitPos;
+        // If locks have been used, place the exit behind the last one.
+        if (noOfLocks > 0)
+        {
+            Room room = rooms[lockKeySpawns[lockKeySpawns.Length - 1].lockSpawn.roomNo - 1];
+            // Choose a random cell in this room to be the exit. 
+            do
+            {
+                exitPos = room.roomCells[Random.Range(0, room.roomCells.Count)];
+            } while (exitPos == lockKeySpawns[lockKeySpawns.Length - 1].lockSpawn);
+            exitPos.type = CellS.TileType.Exit;
+
+            exitSpawn = exitPos;
+        }
+        // Else just place it in a random room. 
+        else
+        {
+            Room room = rooms[Random.Range(0, rooms.Count)];
+            // Choose a random cell in this room to be the exit. 
+            do
+            {
+                exitPos = room.roomCells[Random.Range(0, room.roomCells.Count)];
+            } while (adjCells.Contains(exitPos));
+            exitPos.type = CellS.TileType.Exit;
+
+            exitSpawn = exitPos;
+        }
+        exitSpawn = exitPos;
+
     }
 
     // Instantiate our finished grid. 
@@ -266,6 +363,9 @@ public class RoguelikeGenerator : MonoBehaviour {
                 case CellS.TileType.Spawn:
                     currentCell.cellObject = Instantiate(spawnPrefab, currentCell.spawnPos, spawnPrefab.transform.rotation);
                     break;
+                case CellS.TileType.Exit:
+                    currentCell.cellObject = Instantiate(exitPrefab, currentCell.spawnPos, exitPrefab.transform.rotation);
+                    break;
             }
         }
 
@@ -276,8 +376,101 @@ public class RoguelikeGenerator : MonoBehaviour {
         }
     }
 
-    // Update is called once per frame
-    void Update () {
-		
-	}
+    // Check the amount of exploration that needs to be done from the player's spawn to reaching the exit- the critical path
+    // Currently forward pathfinding just going straight from the start to the exit with no concern for locks, but needs to update the target depending on locks it finds later 
+    public void ExplorePath()
+    {
+        PathfindingReset();
+        // Target position is the player's spawn - stored in playerSpawn already as a CellS 
+        List<CellS> openList = new List<CellS>();
+        List<CellS> closedList = new List<CellS>();
+        // Add the starting position to the open list - the player spawn.
+        CellS startCell = playerSpawn;
+        openList.Add(startCell);
+        CellS currentCell = null;
+
+        while (openList.Count > 0)
+        {
+            currentCell = Pathfinding.FindLowestFScore(openList);
+            // Add the current cell to the closed list and remove it from the open list
+            closedList.Add(currentCell);
+            openList.Remove(currentCell);
+
+            // Has the target been found? 
+            if (closedList.Contains(exitSpawn))
+            {
+                break;
+            }
+
+            List<CellS> adjacentCells = Pathfinding.GetTraversableNeighbours(currentCell);
+            foreach (CellS c in adjacentCells)
+            {
+                // If this cell is already in the closed path, skip it because we know about it 
+                if (closedList.Contains(c))
+                    continue;
+
+                // If this cell isn't in the open list, add it in for evaluation
+                if (!openList.Contains(c))
+                {
+                    // Compute its g and h scores, set the parent
+                    c.g = currentCell.g + 1;
+                    c.h = (int)Pathfinding.ManhattanDistance(c, RoguelikeGenerator.instance.playerSpawn);
+                    c.parent = currentCell;
+                    openList.Add(c);
+                }
+                else if (c.h + currentCell.g + 1 < c.f)
+                {
+                    // If using the current g score make the f score lower, update the parent as its a better path.
+                    c.parent = currentCell;
+                }
+
+            }
+
+        }
+
+        List<CellS> bestPath = Pathfinding.BuildPath(exitSpawn);
+        foreach (CellS c in bestPath)
+        {
+            Debug.Log(string.Format("{0}, {1}", c.gridPos.x, c.gridPos.y));
+        }
+        Debug.Log(string.Format("Number of cells on the critical path: {0} ", bestPath.Count));
+
+    }
+
+    public void PathfindingReset()
+    {
+        foreach (KeyValuePair<Vector2, CellS> c in cells)
+        {
+            CellS cell = c.Value;
+            cell.g = 0;
+            cell.h = 0;
+            cell.parent = null;
+        }
+    }
+
+
+    void WriteCSV()
+    {
+        string filePath = "C:\\Users\\Eleanor\\Documents\\Computer Science\\Stage 3\\Dissertation\\Results\\output.csv";
+
+        TextWriter tw = new StreamWriter(filePath, true);
+
+        // MWR/BSP generation
+        //tw.WriteLine(dungeonRows + "x" + dungeonColumns + "," + actualSparseness + "," + noOfRooms + "," + minWidth + " to " + maxWidth + "," + minHeight + " to " + maxHeight + "," + startupTime + ","
+        //            + gridGenTime + "," + mazeGenTime + "," + sparseTime + "," + loopTime + "," + doublingTime + "," + roomTime + "," + instantiationTime + "," + totalGenTime);
+
+        // Lock placement
+        tw.WriteLine(noOfLocks + "," + startupTime + "," + gridGenTime + "," + mazeGenTime + "," + sparseTime + "," + loopTime + "," + doublingTime + "," + roomTime + "," + lockTime + "," + instantiationTime + "," + replacementCount + "," + totalGenTime);
+
+
+
+        tw.Flush();
+        tw.Close();
+
+        //EditorApplication.isPlaying = false;
+        
+    }
+    
+
+   
 }

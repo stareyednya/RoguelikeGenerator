@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 public class MWRCellStruct
 {
@@ -33,12 +34,10 @@ public class MWRCellStruct
     // Cell size to determine how far apart to place cells during generation. 
     private float cellSize;
 
-   
+  
 
-    
     public MWRCellStruct(int gridRows, int gridColumns)
     {
-        
         GenerateMaze(gridRows, gridColumns);
     }
 

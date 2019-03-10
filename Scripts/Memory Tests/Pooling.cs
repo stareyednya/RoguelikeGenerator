@@ -2,14 +2,21 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class MWRPooling
+public class Pooling : MonoBehaviour
 {
     // Grid pos to spawn pos for use with covering up dead ends.
     private Dictionary<Vector2, Vector2> spawns = new Dictionary<Vector2, Vector2>();
+    // Object pools. 
+    // Hold and locate all the cells in the maze. 
+    public Dictionary<Vector2, Cell> cellsP = new Dictionary<Vector2, Cell>();
+    // Matching set of wall objects to instantiate.
+    public Dictionary<Vector2, Cell> wallsP = new Dictionary<Vector2, Cell>();
+    public Dictionary<Vector2, Cell> roomsP = new Dictionary<Vector2, Cell>();
+    public List<Cell> adjCellsInstances = new List<Cell>();
     // List of all cells found to be dead ends, i.e, 3 walls are active. 
     private List<Cell> deadEnds = new List<Cell>();
     private List<Cell> walls = new List<Cell>();
-    private List<Cell> rooms = new List<Cell>();
+    private List<Room> rooms = new List<Room>();
 
     // How many cells TALL the maze will be.
     public int mazeRows;
@@ -19,7 +26,19 @@ public class MWRPooling
 
     // Cell size to determine how far apart to place cells during generation. 
     private float cellSize;
-    
+
+    // The prefab to use as the cell icon. 
+    [SerializeField]
+    private GameObject cellPrefab;
+    // The tile to use as a wall to fill in dead ends with.
+    [SerializeField]
+    private GameObject wallPrefab;
+    // A tile to differentiate room tiles from the floor.
+    [SerializeField]
+    private GameObject roomPrefab;
+    // Lock icon- currently using drink from the tutorial because i dont want to make one right now
+    [SerializeField]
+    private GameObject spawnPrefab;
 
     // List of unvisited cells.
     private List<Cell> unvisited = new List<Cell>();
@@ -31,24 +50,77 @@ public class MWRPooling
     private Cell currentCell;
     private Cell checkCell;
 
-    public MWRPooling(int gridRows, int gridColumns)
+    // How much rock to fill back in. 
+    public int sparseness;
+
+    // The chance of a dead end being filled back in. 
+    public int removalChance;
+
+    // Parameters for the number of rooms to include, and their range of possible dimensions. 
+    public int noOfRooms;
+    public int minWidth;
+    public int maxWidth;
+    public int minHeight;
+    public int maxHeight;
+
+    // Organise the editor hierarchy. 
+    [HideInInspector]
+    public GameObject mazeParent;
+    [HideInInspector]
+    public GameObject wallParent;
+    [HideInInspector]
+    public GameObject roomParent;
+
+    public bool doubleDungeon;
+
+    // Start is called before the first frame update
+    IEnumerator Start()
     {
-        GenerateMaze(gridRows, gridColumns);
-        PlacePlayerSpawn();
+        mazeParent = new GameObject();
+        mazeParent.transform.position = Vector2.zero;
+        mazeParent.name = "Maze";
+
+
+        wallParent = new GameObject();
+        wallParent.transform.position = Vector2.zero;
+        wallParent.name = "Walls";
+
+        roomParent = new GameObject();
+        roomParent.transform.position = Vector2.zero;
+        roomParent.name = "Rooms";
+
+        GenerateMaze(mazeRows, mazeColumns);
+
+        Debug.Log("Creating maze");
+        yield return StartCoroutine("CreateLayout");
+
+        Debug.Log("Creating maze");
+        yield return StartCoroutine("RecursiveBacktracking");
+
+
+        Debug.Log("Filling in ends");
+        yield return StartCoroutine("FillInEnds");
+
+        Debug.Log("Removing loops");
+        yield return StartCoroutine("RemoveLoops");
+
+        Debug.Log("Placing Rooms");
+        yield return StartCoroutine("PlaceRooms");
+
+        Debug.Log("Done");
     }
 
     private void GenerateMaze(int rows, int columns)
     {
         mazeRows = rows;
         mazeColumns = columns;
-        CreateLayout();
     }
 
     // Create the grid of cells. 
-    public void CreateLayout()
+    public IEnumerator CreateLayout()
     {
         // Determine the size of the cells to place from the tile we're using. 
-        cellSize = RoguelikeGenerator.instance.cellPrefab.transform.localScale.x;
+        cellSize = cellPrefab.transform.localScale.x;
 
         // Set the starting point of our maze somewhere in the middle. 
         Vector2 startPos = new Vector2(-(cellSize * (mazeColumns / 2)) + (cellSize / 2), -(cellSize * (mazeRows / 2)) + (cellSize / 2));
@@ -74,32 +146,13 @@ public class MWRPooling
         // Choose a random cell to start from 
         int xStart = Random.Range(0, mazeColumns);
         int yStart = Random.Range(0, mazeRows);
-        currentCell = RoguelikeGenerator.instance.cellsP[new Vector2(xStart, yStart)];
+        currentCell = cellsP[new Vector2(xStart, yStart)];
 
         // Mark our starting cell as visited by removing it from the unvisited list. 
         unvisited.Remove(currentCell);
+        
 
-        RoguelikeGenerator.instance.gridGenTime = Time.realtimeSinceStartup - RoguelikeGenerator.instance.totalGenTime;
-        RoguelikeGenerator.instance.totalGenTime += RoguelikeGenerator.instance.gridGenTime;
-
-       
-        RecursiveBacktracking();
-        RoguelikeGenerator.instance.mazeGenTime = Time.realtimeSinceStartup - RoguelikeGenerator.instance.totalGenTime;
-        RoguelikeGenerator.instance.totalGenTime += RoguelikeGenerator.instance.mazeGenTime;
-        // Fill in the dead ends with some walls.
-        FindDeadEnds();
-        FillInEnds();
-        RoguelikeGenerator.instance.sparseTime = Time.realtimeSinceStartup - RoguelikeGenerator.instance.totalGenTime;
-        RoguelikeGenerator.instance.totalGenTime += RoguelikeGenerator.instance.sparseTime;
-        // Remove some dead ends by making the maze imperfect.
-        RemoveLoops();
-        RoguelikeGenerator.instance.loopTime = Time.realtimeSinceStartup - RoguelikeGenerator.instance.totalGenTime;
-        RoguelikeGenerator.instance.totalGenTime += RoguelikeGenerator.instance.loopTime;
-
-        // Place rooms.
-        PlaceRooms();
-        RoguelikeGenerator.instance.roomTime = Time.realtimeSinceStartup - RoguelikeGenerator.instance.totalGenTime;
-        RoguelikeGenerator.instance.totalGenTime += RoguelikeGenerator.instance.roomTime;
+        yield return null;
     }
 
     // Instantiate a cell based on the given position. 
@@ -110,16 +163,16 @@ public class MWRPooling
         // Store a reference to this position in the grid.
         newCell.gridPos = keyPos;
         // Set and instantiate this cell's GameObject.
-        newCell.cellObject = GameObject.Instantiate(RoguelikeGenerator.instance.cellPrefab, pos, RoguelikeGenerator.instance.cellPrefab.transform.rotation);
+        newCell.cellObject = GameObject.Instantiate(cellPrefab, pos, cellPrefab.transform.rotation);
         // Child the new cell to the maze parent. 
-        newCell.cellObject.transform.parent = RoguelikeGenerator.instance.mazeParent.transform;
+        newCell.cellObject.transform.parent = mazeParent.transform;
         // Set the name of this cellObject.
         newCell.cellObject.name = "Cell - X:" + keyPos.x + " Y:" + keyPos.y;
         // Get reference to attached cell script.
         newCell.cScript = newCell.cellObject.GetComponent<CellScript>();
 
         // Add this cell to our lists. 
-        RoguelikeGenerator.instance.cellsP[keyPos] = newCell;
+        cellsP[keyPos] = newCell;
         unvisited.Add(newCell);
 
         // POOLING ADDITIONS
@@ -128,33 +181,33 @@ public class MWRPooling
         Cell newWall = new Cell();
         newWall.gridPos = keyPos;
         // Set and instantiate this cell's GameObject.
-        newWall.cellObject = GameObject.Instantiate(RoguelikeGenerator.instance.wallPrefab, pos, RoguelikeGenerator.instance.wallPrefab.transform.rotation);
+        newWall.cellObject = GameObject.Instantiate(wallPrefab, pos, wallPrefab.transform.rotation);
         // Child the new cell to the maze parent. 
-        newWall.cellObject.transform.parent = RoguelikeGenerator.instance.wallParent.transform;
+        newWall.cellObject.transform.parent = wallParent.transform;
         // Set the name of this cellObject.
         newWall.cellObject.name = "Wall - X:" + keyPos.x + " Y:" + keyPos.y;
         // Get reference to attached cell script.
         newWall.cScript = newWall.cellObject.GetComponent<CellScript>();
         newWall.cellObject.SetActive(false);
-        RoguelikeGenerator.instance.wallsP[keyPos] = newWall;
+        wallsP[keyPos] = newWall;
 
         // Make a matching room object and deactivate it. 
         Cell newRoom = new Cell();
         newRoom.gridPos = keyPos;
         // Set and instantiate this cell's GameObject.
-        newRoom.cellObject = GameObject.Instantiate(RoguelikeGenerator.instance.roomPrefab, pos, RoguelikeGenerator.instance.roomPrefab.transform.rotation);
+        newRoom.cellObject = GameObject.Instantiate(roomPrefab, pos, roomPrefab.transform.rotation);
         // Get reference to attached cell script.
         newRoom.cScript = newRoom.cellObject.GetComponent<CellScript>();
         newRoom.cellObject.SetActive(false);
-        RoguelikeGenerator.instance.roomsP[keyPos] = newRoom;
+        roomsP[keyPos] = newRoom;
     }
 
-    public void RecursiveBacktracking()
+    public IEnumerator RecursiveBacktracking()
     {
         // Loop while there are still cells in the grid we haven't visited. 
         while (unvisited.Count > 0)
         {
-            List<Cell> unvisitedNeighbours = MazeUtils.GetUnvisitedNeighbours(currentCell, ref RoguelikeGenerator.instance.cellsP, ref unvisited);
+            List<Cell> unvisitedNeighbours = MazeUtils.GetUnvisitedNeighbours(currentCell, ref cellsP, ref unvisited);
             if (unvisitedNeighbours.Count > 0)
             {
                 // Choose a random unvisited neighbour. 
@@ -176,18 +229,20 @@ public class MWRPooling
                 stack.Remove(currentCell);
             }
         }
+
+        yield return null;
     }
 
-    public void FindDeadEnds()
+    public IEnumerator FillInEnds()
     {
         for (int x = 0; x < mazeColumns; x++)
         {
             for (int y = 0; y < mazeRows; y++)
             {
                 Vector2 pos = new Vector2(x, y);
-                if (RoguelikeGenerator.instance.cellsP.ContainsKey(pos))
+                if (cellsP.ContainsKey(pos))
                 {
-                    Cell testCell = RoguelikeGenerator.instance.cellsP[pos];
+                    Cell testCell = cellsP[pos];
                     if (MazeUtils.NoOfWalls(testCell) >= 3 && !walls.Contains(testCell))
                     {
                         deadEnds.Add(testCell);
@@ -195,16 +250,13 @@ public class MWRPooling
                 }
             }
         }
-    }
 
-    public void FillInEnds()
-    {
         // Keep a list of positions of cells to deactivate and replace with walls at the end- MUST be done at the end as maze generation relies on previous cells being present
         List<Vector2> posToReplace = new List<Vector2>();
-        RoguelikeGenerator.instance.wallParent = new GameObject();
-        RoguelikeGenerator.instance.wallParent.transform.position = Vector2.zero;
-        RoguelikeGenerator.instance.wallParent.name = "Walls";
-        for (int i = 0; i < RoguelikeGenerator.instance.sparseness; i++)
+        wallParent = new GameObject();
+        wallParent.transform.position = Vector2.zero;
+        wallParent.name = "Walls";
+        for (int i = 0; i < sparseness; i++)
         {
             for (int j = 0; j < deadEnds.Count; j++)
             {
@@ -238,12 +290,12 @@ public class MWRPooling
                 Vector2 nextPos = deadEnds[j].gridPos + direction; // The position of the next cell we're going to be moving to check. 
 
                 // Follow along ths passageway until we are no longer filling in dead ends in this direction i.e current cell does not have 3 walls.
-                while (MazeUtils.NoOfWalls(RoguelikeGenerator.instance.cellsP[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
+                while (MazeUtils.NoOfWalls(cellsP[nextPos]) == 3 && nextPos.x < mazeRows - 1 && nextPos.y < mazeColumns - 1 && nextPos.x > 0 && nextPos.y > 0)
                 {
                     // Fill in the current cell if it hasn't been already.
                     if (!posToReplace.Contains(nextPos + direction))
                     {
-                        posToReplace.Add(RoguelikeGenerator.instance.cellsP[nextPos + direction].gridPos);
+                        posToReplace.Add(cellsP[nextPos + direction].gridPos);
 
                     }
                     // Move along the passageway.
@@ -254,26 +306,26 @@ public class MWRPooling
                 // Add a wall to the opposite direction on our current non-dead end cell- the way back into the passage we just filled in. 
                 if (direction.y == -1)
                 {
-                    RoguelikeGenerator.instance.cellsP[nextPos].cScript.wallU.SetActive(true);
+                    cellsP[nextPos].cScript.wallU.SetActive(true);
                 }
                 else if (direction.y == 1)
                 {
-                    RoguelikeGenerator.instance.cellsP[nextPos].cScript.wallD.SetActive(true);
+                    cellsP[nextPos].cScript.wallD.SetActive(true);
                 }
                 else if (direction.x == -1)
                 {
-                    RoguelikeGenerator.instance.cellsP[nextPos].cScript.wallR.SetActive(true);
+                    cellsP[nextPos].cScript.wallR.SetActive(true);
                 }
                 else if (direction.x == 1)
                 {
-                    RoguelikeGenerator.instance.cellsP[nextPos].cScript.wallL.SetActive(true);
+                    cellsP[nextPos].cScript.wallL.SetActive(true);
                 }
 
                 // If our current cell now has 3 walls, it's a dead end, so update our dead end list.
                 // else we're done with this dead end, so remove it.
-                if (MazeUtils.NoOfWalls(RoguelikeGenerator.instance.cellsP[nextPos]) == 3)
+                if (MazeUtils.NoOfWalls(cellsP[nextPos]) == 3)
                 {
-                    deadEnds[j] = RoguelikeGenerator.instance.cellsP[nextPos];
+                    deadEnds[j] = cellsP[nextPos];
                 }
                 else
                 {
@@ -281,32 +333,48 @@ public class MWRPooling
                 }
             }
         }
-        
+
         // Go through list of positions to mark and activate all walls on that cell, then deactivate it, activate wall in that position
         foreach (Vector2 p in posToReplace)
         {
-            RoguelikeGenerator.instance.cellsP[p].cScript.wallD.SetActive(true);
-            RoguelikeGenerator.instance.cellsP[p].cScript.wallU.SetActive(true);
-            RoguelikeGenerator.instance.cellsP[p].cScript.wallL.SetActive(true);
-            RoguelikeGenerator.instance.cellsP[p].cScript.wallR.SetActive(true);
+            cellsP[p].cScript.wallD.SetActive(true);
+            cellsP[p].cScript.wallU.SetActive(true);
+            cellsP[p].cScript.wallL.SetActive(true);
+            cellsP[p].cScript.wallR.SetActive(true);
 
-            RoguelikeGenerator.instance.cellsP[p].cellObject.SetActive(false);
-            RoguelikeGenerator.instance.wallsP[p].cellObject.SetActive(true);
+            cellsP[p].cellObject.SetActive(false);
+            wallsP[p].cellObject.SetActive(true);
         }
+
+        yield return null;
     }
 
-    public void RemoveLoops()
+    public IEnumerator RemoveLoops()
     {
 
         // Refind our dead ends since the passages have been filled in.
         deadEnds.Clear();
-        FindDeadEnds();
+        for (int x = 0; x < mazeColumns; x++)
+        {
+            for (int y = 0; y < mazeRows; y++)
+            {
+                Vector2 pos = new Vector2(x, y);
+                if (cellsP.ContainsKey(pos))
+                {
+                    Cell testCell = cellsP[pos];
+                    if (MazeUtils.NoOfWalls(testCell) >= 3 && !walls.Contains(testCell))
+                    {
+                        deadEnds.Add(testCell);
+                    }
+                }
+            }
+        }
 
         for (int i = 0; i < deadEnds.Count; i++)
         {
             bool hitCorridor = false;
             // Roll a number to determine if we're removing this dead end. 
-            if (Random.Range(1, 101) <= RoguelikeGenerator.instance.removalChance)
+            if (Random.Range(1, 101) <= removalChance)
             {
                 Cell currentDeadEnd = deadEnds[i];
                 // Find current dead end's valid neighbours- cells that are on the grid. 
@@ -342,20 +410,20 @@ public class MWRPooling
                             // Find the position of a neighbour on the grid, relative to the current cell. 
                             Vector2 nPos = currentPos + MazeUtils.possibleNeighbours[j];
                             // Check the neighbouring cell exists. 
-                            if (RoguelikeGenerator.instance.cellsP.ContainsKey(nPos))
-                                neighbours.Add(RoguelikeGenerator.instance.cellsP[nPos]);
+                            if (cellsP.ContainsKey(nPos))
+                                neighbours.Add(cellsP[nPos]);
                         }
                     }
 
                     // Choose a random direction i.e. a random neighbour.
                     checkCell = neighbours[Random.Range(0, neighbours.Count)];
-                    
+
                     // See if this spot has its wall tile active.
                     // If so, deactivate and compare the walls to remove it. 
-                    if (RoguelikeGenerator.instance.wallsP[checkCell.gridPos].cellObject.activeInHierarchy)
+                    if (wallsP[checkCell.gridPos].cellObject.activeInHierarchy)
                     {
-                        RoguelikeGenerator.instance.wallsP[checkCell.gridPos].cellObject.SetActive(false);
-                        RoguelikeGenerator.instance.cellsP[checkCell.gridPos].cellObject.SetActive(true);
+                        wallsP[checkCell.gridPos].cellObject.SetActive(false);
+                        cellsP[checkCell.gridPos].cellObject.SetActive(true);
                         // Remove walls between chosen neighbour and current dead end. 
                         MazeUtils.CompareWallsInPool(currentDeadEnd, checkCell);
 
@@ -372,14 +440,15 @@ public class MWRPooling
             }
         }
 
+        yield return null;
 
 
     }
 
-    public void PlaceRooms()
+    public IEnumerator PlaceRooms()
     {
 
-        for (int i = 0; i < RoguelikeGenerator.instance.noOfRooms; i++)
+        for (int i = 0; i < noOfRooms; i++)
         {
             Room r = new Room();
             r.roomNo = i + 1;
@@ -388,11 +457,11 @@ public class MWRPooling
             int bestScore = int.MaxValue;
             Vector2 bestPos = new Vector2(0, 0);
             // Generate a random room based on our dimensions to place. 
-            int roomWidth = Random.Range(RoguelikeGenerator.instance.minWidth, RoguelikeGenerator.instance.maxWidth);
-            int roomHeight = Random.Range(RoguelikeGenerator.instance.minHeight, RoguelikeGenerator.instance.maxHeight);
+            int roomWidth = Random.Range(minWidth, maxWidth);
+            int roomHeight = Random.Range(minHeight, maxHeight);
             //Debug.Log (string.Format ("Width: {0}, height: {1} for room {2}", roomWidth, roomHeight, i + 1));
             // For each cell C in the dungeon.
-            foreach (KeyValuePair<Vector2, Cell> c in RoguelikeGenerator.instance.cellsP)
+            foreach (KeyValuePair<Vector2, Cell> c in cellsP)
             {
                 // Put bottom left room cell at C.
                 Vector2 bottomLeft = c.Key;
@@ -430,27 +499,27 @@ public class MWRPooling
                                 // Find the position of a neighbour on the grid, relative to the current cell. 
                                 Vector2 nPos = currentPos + MazeUtils.possibleNeighbours[j];
                                 // Check the neighbouring cell exists. 
-                                if (RoguelikeGenerator.instance.cellsP.ContainsKey(nPos) && RoguelikeGenerator.instance.cellsP[nPos].cellObject.activeInHierarchy)
+                                if (cellsP.ContainsKey(nPos) && cellsP[nPos].cellObject.activeInHierarchy)
                                 {
                                     isAdjacentC = true;
-                                    RoguelikeGenerator.instance.roomsP[currentPos].isAdjacentC = true;
+                                    roomsP[currentPos].isAdjacentC = true;
                                 }
-                                    
+
                             }
                             // For each cell overlapping a room, add 100 to score.
-                            if (RoguelikeGenerator.instance.roomsP[cCell].cellObject.activeInHierarchy)
+                            if (roomsP[cCell].cellObject.activeInHierarchy)
                             {
                                 //Debug.Log (string.Format ("Adding 100 to score."));
 
                                 currentScore += 100;
                             }
-                            if (RoguelikeGenerator.instance.wallsP[cCell].cellObject.activeInHierarchy && isAdjacentC)
+                            if (wallsP[cCell].cellObject.activeInHierarchy && isAdjacentC)
                             {
                                 currentScore += 1;
                             }
 
                             // For each cell overlapping a corridor, add 3 to the score
-                            if (!RoguelikeGenerator.instance.wallsP[cCell].cellObject.activeInHierarchy)
+                            if (!wallsP[cCell].cellObject.activeInHierarchy)
                             {
                                 currentScore += 3;
                             }
@@ -459,9 +528,9 @@ public class MWRPooling
 
                     }
                 }
-                
 
-               // If this resulting score for the room is better than our current best, replace it. 
+
+                // If this resulting score for the room is better than our current best, replace it. 
                 if (currentScore < bestScore && currentScore > 0)
                 {
                     bestScore = currentScore;
@@ -474,30 +543,30 @@ public class MWRPooling
             {
                 for (int y = (int)bestPos.y; y < (int)bestPos.y + roomHeight; y++)
                 {
-                   
+
                     Vector2 pos = new Vector2(x, y);
-                    if (RoguelikeGenerator.instance.roomsP[pos].isAdjacentC)
-                        RoguelikeGenerator.instance.adjCellsInstances.Add(RoguelikeGenerator.instance.roomsP[pos]);
+                    if (roomsP[pos].isAdjacentC)
+                        adjCellsInstances.Add(roomsP[pos]);
 
-                    RoguelikeGenerator.instance.roomsP[pos].roomNo = i + 1;
+                    roomsP[pos].roomNo = i + 1;
 
 
-                    if (RoguelikeGenerator.instance.cellsP[pos].cellObject.activeInHierarchy)
+                    if (cellsP[pos].cellObject.activeInHierarchy)
                     {
-                        RoguelikeGenerator.instance.cellsP[pos].cellObject.SetActive(false);
+                        cellsP[pos].cellObject.SetActive(false);
                         // Remove all walls
-                        RoguelikeGenerator.instance.cellsP[pos].cScript.wallD.SetActive(false);
-                        RoguelikeGenerator.instance.cellsP[pos].cScript.wallL.SetActive(false);
-                        RoguelikeGenerator.instance.cellsP[pos].cScript.wallR.SetActive(false);
-                        RoguelikeGenerator.instance.cellsP[pos].cScript.wallU.SetActive(false);
+                        cellsP[pos].cScript.wallD.SetActive(false);
+                        cellsP[pos].cScript.wallL.SetActive(false);
+                        cellsP[pos].cScript.wallR.SetActive(false);
+                        cellsP[pos].cScript.wallU.SetActive(false);
                     }
                     else
                     {
-                        RoguelikeGenerator.instance.wallsP[pos].cellObject.SetActive(false);
+                        wallsP[pos].cellObject.SetActive(false);
                     }
 
-                    RoguelikeGenerator.instance.roomsP[pos].cellObject.SetActive(true);
-                    CellScript cs = RoguelikeGenerator.instance.roomsP[pos].cScript;
+                    roomsP[pos].cellObject.SetActive(true);
+                    CellScript cs = roomsP[pos].cScript;
                     // Only need to do special wall check for left and below cells due to the room cells being instantiated upwards column by column.
                     //cs.wallL.SetActive(false); 
                     //cs.wallR.SetActive(false); 
@@ -556,36 +625,21 @@ public class MWRPooling
                     //    }
                     //}
 
-                    r.roomCellsInstantiated.Add(RoguelikeGenerator.instance.roomsP[pos]);
+                    r.roomCellsInstantiated.Add(roomsP[pos]);
                 }
             }
 
-            RoguelikeGenerator.instance.rooms.Add(r);
+            rooms.Add(r);
 
         }
+
+        yield return null;
 
     }
 
-    // Done in here to swap out a tile instead of passing the lists everywhere.
-    public void PlacePlayerSpawn()
+    // Update is called once per frame
+    void Update()
     {
-        // Choose a random point in a corridor and change that cell's type to the player's spawn. 
-        bool validSpawn = false;
-        Cell spawnTile = null;
-        while (!validSpawn)
-        {
-            Vector2 pos = new Vector2(Random.Range(0, mazeRows), Random.Range(0, mazeColumns));
-            spawnTile = RoguelikeGenerator.instance.cellsP[pos];
-            if (RoguelikeGenerator.instance.cellsP.ContainsKey(pos) && RoguelikeGenerator.instance.cellsP[pos].cellObject.activeInHierarchy)
-            {
-                validSpawn = true;
-            }
-        }
-
-        // Deactivate the cell here and instantiate a player spawn at its place. 
-        spawnTile.cellObject.SetActive(false);
-        GameObject.Instantiate(RoguelikeGenerator.instance.spawnPrefab, spawns[spawnTile.gridPos], Quaternion.identity);
-
-        RoguelikeGenerator.instance.playerSpawnInstance = spawnTile;
+        
     }
 }

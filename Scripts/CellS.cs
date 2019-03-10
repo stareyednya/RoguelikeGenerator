@@ -6,7 +6,7 @@ public class CellS  {
 
 	public enum TileType
 	{
-		Corridor, Wall, Room, Spawn
+		Corridor, Wall, Room, Spawn, Exit
 	}
 
 	public Vector2 gridPos;
@@ -16,6 +16,7 @@ public class CellS  {
 	public bool wallL;
 	public bool wallR;
 	public bool visited;
+    public char doorWall;
 	public TileType type;
 
 	// Information about which room this cell is part of, if any. Defaults to 0.

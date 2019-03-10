@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class SubDungeon
+public class SD
 {
-    private static Vector2Int MIN_REGION_SIZE = new Vector2Int(RoguelikeGenerator.instance.maxWidth, RoguelikeGenerator.instance.maxHeight);
-    public SubDungeon parent = null;
-    public SubDungeon left, right;
+    private static Vector2Int MIN_REGION_SIZE = new Vector2Int(maxWidth, maxHeight);
+    public SD parent = null;
+    public SD left, right;
     public Rect rect;
     public Rect room = new Rect(-1, -1, 0, 0); // i.e null
     public int debugId;
@@ -17,14 +17,33 @@ public class SubDungeon
 
     public List<Rect> corridors = new List<Rect>();
 
-    //public static List<Rect> allRooms = new List<Rect>();
+    public static List<Rect> allRooms = new List<Rect>();
 
-    public SubDungeon(Rect mrect, SubDungeon p)
+    public static int noOfRooms;
+    public static int minWidth;
+    public static int maxWidth;
+    public static int minHeight;
+    public static int maxHeight;
+
+    public SD(Rect mrect, SD p)
     {
         rect = mrect;
         parent = p;
         debugId = debugCounter;
         debugCounter++;
+    }
+
+    public SD(Rect mrect, SD p, int rooms, int minW, int minH, int maxW, int maxH)
+    {
+        rect = mrect;
+        parent = p;
+        debugId = debugCounter;
+        debugCounter++;
+        noOfRooms = rooms;
+        minWidth = minW;
+        minHeight = minH;
+        maxWidth = maxW;
+        maxHeight = maxH;
     }
 
     public bool IAmLeaf()
@@ -34,6 +53,7 @@ public class SubDungeon
 
     public bool Split(int minRoomSize, int maxRoomSize)
     {
+        
         if (!IAmLeaf())
         {
             return false;
@@ -72,16 +92,16 @@ public class SubDungeon
             // (since we are splitting horizontally)
             int split = Random.Range(MIN_REGION_SIZE.y, maxSize);
 
-            left = new SubDungeon(new Rect(rect.x, rect.y, rect.width, split), this);
-            right = new SubDungeon(
+            left = new SD(new Rect(rect.x, rect.y, rect.width, split), this);
+            right = new SD(
               new Rect(rect.x, rect.y + split, rect.width, rect.height - split), this);
         }
         else
         {
             int split = Random.Range(MIN_REGION_SIZE.x, maxSize);
 
-            left = new SubDungeon(new Rect(rect.x, rect.y, split, rect.height), this);
-            right = new SubDungeon(
+            left = new SD(new Rect(rect.x, rect.y, split, rect.height), this);
+            right = new SD(
               new Rect(rect.x + split, rect.y, rect.width - split, rect.height), this);
         }
         return true;
@@ -89,6 +109,7 @@ public class SubDungeon
 
     public void CreateRoom()
     {
+        Debug.Log(string.Format("{0}, {1}, {2}, {3}, {4}", noOfRooms, minWidth, minHeight, maxWidth, maxHeight));
         if (left != null)
         {
             left.CreateRoom();
@@ -102,16 +123,19 @@ public class SubDungeon
             CreateCorridorBetween(left, right);
         }
 
-        if (IAmLeaf() && roomCount <= RoguelikeGenerator.instance.noOfRooms)
+        if (IAmLeaf() && roomCount <= noOfRooms)
         {
-            int roomWidth = Random.Range(RoguelikeGenerator.instance.minWidth, RoguelikeGenerator.instance.maxWidth);
-            int roomHeight = Random.Range(RoguelikeGenerator.instance.minHeight, RoguelikeGenerator.instance.maxHeight);
+            int roomWidth = Random.Range(minWidth, maxWidth);
+            int roomHeight = Random.Range(minHeight, maxHeight);
             int roomX = (int)Random.Range(1, rect.width - roomWidth - 1);
             int roomY = (int)Random.Range(1, rect.height - roomHeight - 1);
 
+            Debug.Log(string.Format("roomW = {0}, roomH = {1}", roomWidth, roomHeight));
+            Debug.Log(string.Format("rectW = {0}, recth = {1}", rect.width, rect.height));
+
             // room position will be absolute in the board, not relative to the sub-dungeon
             room = new Rect(rect.x + roomX, rect.y + roomY, roomWidth, roomHeight);
-            //Debug.Log("Created room " + room + " in sub-dungeon " + debugId + " " + rect);
+            Debug.Log("Created room " + room + " in sub-dungeon " + debugId + " " + rect + "with width " + roomWidth + " and height " + roomHeight);
             roomCount++;
         }
     }
@@ -143,24 +167,24 @@ public class SubDungeon
         return new Rect(-1, -1, 0, 0);
     }
 
-    //public void GetAllRooms()
-    //{
-    //    if (left != null)
-    //    {
-    //        left.GetAllRooms();
-    //    }
-    //    if (right != null)
-    //    {
-    //        right.GetAllRooms();
-    //    }
-    //    if (left != null && right != null)
-    //    {
-    //        allRooms.Add(left.GetRoom());
-    //        allRooms.Add(right.GetRoom());
-    //    }
-    //}
+    public void GetAllRooms()
+    {
+        if (left != null)
+        {
+            left.GetAllRooms();
+        }
+        if (right != null)
+        {
+            right.GetAllRooms();
+        }
+        if (left != null && right != null)
+        {
+            allRooms.Add(left.GetRoom());
+            allRooms.Add(right.GetRoom());
+        }
+    }
 
-    public void CreateCorridorBetween(SubDungeon left, SubDungeon right)
+    public void CreateCorridorBetween(SD left, SD right)
     {
         Rect lroom = left.GetRoom();
         Rect rroom = right.GetRoom();
@@ -251,61 +275,60 @@ public class SubDungeon
         //    Debug.Log("corridor: " + corridor);
         //}
     }
+
+    //public void CreateLoops()
+    //{
+    //    float alpha = 0.1f;
+    //    float beta = 0.6f;
+
+    //    foreach (Rect r in allRooms)
+    //    {
+    //        foreach (Rect pair in allRooms)
+    //        {
+    //            // For each pair of rooms, compute the distance between them.
+    //            if (r != pair && !r.Equals(new Rect(-1, -1, 0, 0)) && !pair.Equals(new Rect(-1, -1, 0, 0)))
+    //            {
+    //                //Vector2 lpoint = new Vector2((int)Random.Range(r.x + 1, r.xMax - 1), (int)Random.Range(r.y + 1, r.yMax - 1));
+    //                //Vector2 rpoint = new Vector2((int)Random.Range(pair.x + 1, pair.xMax - 1), (int)Random.Range(pair.y + 1, pair.yMax - 1));
+
+    //                //float distance = Pathfinding.ManhattanDistance(RoguelikeGenerator.instance.cells[lpoint], RoguelikeGenerator.instance.cells[rpoint]);
+    //                int distance = Pathfinding.FindNodeDistance(this, r, pair);
+
+    //                // Connect rooms with a probability alpha+beta^distance-1
+    //                float probability = alpha + Mathf.Pow(beta, distance + 1);
+    //            }
+
+    //        }
+    //    }
+
+
+    //    //if (left != null)
+    //    //{
+    //    //    left.CreateLoops();
+    //    //}
+    //    //if (right != null)
+    //    //{
+    //    //    right.CreateLoops();
+    //    //}
+    //    //if (left != null && right != null)
+    //    //{
+    //    //    float alpha = 0.1f;
+    //    //    float beta = 0.6f;
+
+    //    //    Rect lroom = left.GetRoom();
+    //    //    Rect rroom = right.GetRoom();
+
+    //    //    // For each pair of rooms, compute the distance between them.
+    //    //    Vector2 lpoint = new Vector2((int)Random.Range(lroom.x + 1, lroom.xMax - 1), (int)Random.Range(lroom.y + 1, lroom.yMax - 1));
+    //    //    Vector2 rpoint = new Vector2((int)Random.Range(rroom.x + 1, rroom.xMax - 1), (int)Random.Range(rroom.y + 1, rroom.yMax - 1));
+
+    //    //    float distance = Pathfinding.ManhattanDistance(RoguelikeGenerator.instance.cells[lpoint], RoguelikeGenerator.instance.cells[rpoint]);
+
+    //    //    // Connect rooms with a probability alpha+beta^distance-1
+    //    //    float probability = alpha + Mathf.Pow(beta, distance + 1);
+    //    //    CreateCorridorBetween(left, right);
+    //    //}
+
+    //}
 }
-
-//    public void CreateLoops()
-//    {
-//        float alpha = 0.1f;
-//        float beta = 0.6f;
-
-//        foreach (Rect r in allRooms)
-//        {
-//            foreach(Rect pair in allRooms)
-//            {
-//                // For each pair of rooms, compute the distance between them.
-//                if (r != pair && !r.Equals(new Rect(-1, -1, 0, 0)) && !pair.Equals(new Rect(-1, -1, 0, 0)))
-//                {
-//                    //Vector2 lpoint = new Vector2((int)Random.Range(r.x + 1, r.xMax - 1), (int)Random.Range(r.y + 1, r.yMax - 1));
-//                    //Vector2 rpoint = new Vector2((int)Random.Range(pair.x + 1, pair.xMax - 1), (int)Random.Range(pair.y + 1, pair.yMax - 1));
-
-//                    //float distance = Pathfinding.ManhattanDistance(RoguelikeGenerator.instance.cells[lpoint], RoguelikeGenerator.instance.cells[rpoint]);
-//                    int distance = Pathfinding.FindNodeDistance(this, r, pair);
-
-//                    // Connect rooms with a probability alpha+beta^distance-1
-//                    float probability = alpha + Mathf.Pow(beta, distance + 1);
-//                }
-                
-//            }
-//        }
-
-
-//        //if (left != null)
-//        //{
-//        //    left.CreateLoops();
-//        //}
-//        //if (right != null)
-//        //{
-//        //    right.CreateLoops();
-//        //}
-//        //if (left != null && right != null)
-//        //{
-//        //    float alpha = 0.1f;
-//        //    float beta = 0.6f;
-
-//        //    Rect lroom = left.GetRoom();
-//        //    Rect rroom = right.GetRoom();
-            
-//        //    // For each pair of rooms, compute the distance between them.
-//        //    Vector2 lpoint = new Vector2((int)Random.Range(lroom.x + 1, lroom.xMax - 1), (int)Random.Range(lroom.y + 1, lroom.yMax - 1));
-//        //    Vector2 rpoint = new Vector2((int)Random.Range(rroom.x + 1, rroom.xMax - 1), (int)Random.Range(rroom.y + 1, rroom.yMax - 1));
-
-//        //    float distance = Pathfinding.ManhattanDistance(RoguelikeGenerator.instance.cells[lpoint], RoguelikeGenerator.instance.cells[rpoint]);
-
-//        //    // Connect rooms with a probability alpha+beta^distance-1
-//        //    float probability = alpha + Mathf.Pow(beta, distance + 1);
-//        //    CreateCorridorBetween(left, right);
-//        //}
-            
-//    }
-//}
 

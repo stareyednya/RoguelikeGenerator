@@ -1,10 +1,20 @@
 fileFormatVersion: 2
 guid: 774268a877ea97b40b5670850f3a34b0
-timeCreated: 1548757992
-licenseType: Free
 MonoImporter:
+  externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - cellPrefab: {fileID: 1206018232265230, guid: afd053b866294a449aaf1f2e764a75de,
+      type: 3}
+  - wallPrefab: {fileID: 1591473250077338, guid: 25d6f1d1162b1d746ad7fedfd0bc6ccd,
+      type: 3}
+  - roomPrefab: {fileID: 1544547102137694, guid: c97291f08d0502a4fa1d9a35b855378f,
+      type: 3}
+  - spawnPrefab: {fileID: 1497266507106022, guid: 4d69d351f3639d24d8ee05459c2c42f2,
+      type: 3}
+  - mazeParent: {instanceID: 0}
+  - wallParent: {instanceID: 0}
+  - roomParent: {instanceID: 0}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

@@ -10,6 +10,8 @@ public class Room
     public List<Cell> roomCellsInstantiated;
 
     public bool hasKey;
+    public bool hasLock;
+    public int doorwayCount;
 
     public Vector2Int left;
 
@@ -22,6 +24,8 @@ public class Room
         roomCells = new List<CellS>();
         roomCellsInstantiated = new List<Cell>();
         hasKey = false;
+        hasLock = false;
+        doorwayCount = 0;
     }
 
    

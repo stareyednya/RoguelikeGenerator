@@ -67,6 +67,73 @@ public class MazeUtils
         return neighbours;
     }
 
+    public static List<CellS> GetNeighbours(CellS c)
+    {
+        List<CellS> neighbours = new List<CellS>();
+        CellS nCell = c;
+        // Store the position of our current cell. 
+        Vector2 currentPos = c.gridPos;
+
+        foreach (Vector2 p in possibleNeighbours)
+        {
+            // Find the position of a neighbour on the grid, relative to the current cell. 
+            Vector2 nPos = currentPos + p;
+            // Check the neighbouring cell exists. 
+            if (RoguelikeGenerator.instance.cells.ContainsKey(nPos))
+                nCell = RoguelikeGenerator.instance.cells[nPos];
+            
+            neighbours.Add(nCell);
+        }
+
+        // Return the completed list of unvisited neighbours.
+        return neighbours;
+    }
+
+    public static List<CellS> GetCorridorNeighbours(CellS c)
+    {
+        List<CellS> neighbours = new List<CellS>();
+        CellS nCell = c;
+        // Store the position of our current cell. 
+        Vector2 currentPos = c.gridPos;
+
+        foreach (Vector2 p in possibleNeighbours)
+        {
+            // Find the position of a neighbour on the grid, relative to the current cell. 
+            Vector2 nPos = currentPos + p;
+            // Check the neighbouring cell exists. 
+            if (RoguelikeGenerator.instance.cells.ContainsKey(nPos))
+                nCell = RoguelikeGenerator.instance.cells[nPos];
+
+            if (nCell.type == CellS.TileType.Corridor)
+                neighbours.Add(nCell);
+        }
+
+        // Return the completed list of unvisited neighbours.
+        return neighbours;
+    }
+
+    public static List<CellS> GetNeighbours(CellS c, ref Dictionary<Vector2, CellS> cells)
+    {
+        List<CellS> neighbours = new List<CellS>();
+        CellS nCell = c;
+        // Store the position of our current cell. 
+        Vector2 currentPos = c.gridPos;
+
+        foreach (Vector2 p in possibleNeighbours)
+        {
+            // Find the position of a neighbour on the grid, relative to the current cell. 
+            Vector2 nPos = currentPos + p;
+            // Check the neighbouring cell exists. 
+            if (cells.ContainsKey(nPos))
+                nCell = cells[nPos];
+
+            neighbours.Add(nCell);
+        }
+
+        // Return the completed list of unvisited neighbours.
+        return neighbours;
+    }
+
     // Compare current cell with its neighbour and remove walls as appropriate. 
     public static void CompareWalls(CellS currentCell, CellS neighbourCell)
     {
@@ -75,25 +142,52 @@ public class MazeUtils
         {
             neighbourCell.wallR = false;
             currentCell.wallL = false;
+            currentCell.doorWall = 'L';
         }
         // If neighbour is to the right of current. 
         else if (neighbourCell.gridPos.x > currentCell.gridPos.x)
         {
             neighbourCell.wallL = false;
             currentCell.wallR = false;
+            currentCell.doorWall = 'R';
         }
         // If neighbour is above current. 
         else if (neighbourCell.gridPos.y > currentCell.gridPos.y)
         {
             neighbourCell.wallD = false;
             currentCell.wallU = false;
+            currentCell.doorWall = 'U';
         }
         // If neighbour is below current. 
         else if (neighbourCell.gridPos.y < currentCell.gridPos.y)
         {
             neighbourCell.wallU = false;
             currentCell.wallD = false;
+            currentCell.doorWall = 'D';
         }
+    }
+
+    public static void OpenDoorway(CellS roomCell)
+    {
+        List<CellS> corridorNeighbours = GetCorridorNeighbours(roomCell);
+
+        CellS corridor = corridorNeighbours[Random.Range(0, corridorNeighbours.Count)];
+        CompareWalls(roomCell, corridor);
+
+    }
+
+    public static void CloseDoorway(CellS roomCell)
+    {
+        switch (roomCell.doorWall)
+        {
+            case 'L': roomCell.wallL = true; break;
+            case 'R': roomCell.wallR = true; break;
+            case 'U': roomCell.wallU = true; break;
+            case 'D': roomCell.wallD = true; break;
+        }
+
+        roomCell.doorWall = 'n';
+
     }
 
     // Compare current cell with its neighbour and remove walls as appropriate. 
